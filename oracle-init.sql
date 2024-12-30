@@ -1,0 +1,6 @@
+ALTER SESSION SET "_ORACLE_SCRIPT"=true;
+CREATE USER oreotaste IDENTIFIED BY 1234;
+GRANT CREATE SESSION TO oreotaste WITH ADMIN OPTION;
+GRANT CREATE ANY TABLE TO oreotaste;
+GRANT CONNECT TO oreotaste;
+grant all privileges to oreotaste;
