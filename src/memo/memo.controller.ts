@@ -32,8 +32,8 @@ export class MemoController {
     async insertMemo(@AuthUser() authUser: AuthUserDto,
                      @Body() insertMemoDto: InsertMemoDto,
                      @UploadedFiles() files: Array<Express.Multer.File>) : Promise<InsertMemoResultDto> {
-        // if(authUser) {
-            const insertResult = await this.memoService.insertMemo(1, insertMemoDto);
+        if(authUser) {
+            const insertResult = await this.memoService.insertMemo(authUser.id, insertMemoDto);
             try {
                 for(let file of files) {
                     if (!file.path) {
@@ -47,8 +47,8 @@ export class MemoController {
                 return new InsertMemoResultDto(insertResult.raw, false, ['failed to save file']);
             }
             return new InsertMemoResultDto(insertResult.raw);
-        // }
-        // return new InsertMemoResultDto(null, false, ["couldn't insert memo"]);
+        }
+        return new InsertMemoResultDto(null, false, ["couldn't insert memo"]);
     }
 
     @Post('update')
