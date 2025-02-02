@@ -10,7 +10,7 @@ import { FileService } from 'src/file/file.service';
 export class MemoController {
     constructor(private readonly memoService: MemoService, 
                 private readonly fileService: FileService
-            ){} 
+            ){}
 
     @Get('list')
     async searchMemo(@AuthUser() authUser: AuthUserDto,
