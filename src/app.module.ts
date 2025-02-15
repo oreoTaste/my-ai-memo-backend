@@ -27,6 +27,8 @@ import { CommonModule } from './common/common.module';
 import { FileModule } from './file/file.module';
 import { UploadFile } from './file/entity/file.entity';
 import { FileController } from './file/file.controller';
+import { QueryModule } from './query/query.modue';
+import { QueryController } from './query/query.controller';
 
 @Module({
   imports: [
@@ -61,6 +63,7 @@ import { FileController } from './file/file.controller';
   , TodoModule
   , CommonModule
   , FileModule
+  , QueryModule
   ],
   controllers: [AppController],
   providers: [AppService, TaskService],
@@ -70,6 +73,6 @@ export class AppModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(LoggerMiddleware/* , IpCheckMiddleware */)
-      .forRoutes(AppController, UserController, MemoController, CodeController, TodoController, FileController);
+      .forRoutes(AppController, UserController, MemoController, CodeController, TodoController, FileController, QueryController);
   }  
 }
