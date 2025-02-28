@@ -91,6 +91,7 @@ export class CodeService {
             if(adminYn) {
                 let searchBody = {};
                 if(searchCodeDto.code) {
+                    searchBody['code'] = searchCodeDto.code;
                 }
                 if(searchCodeDto.codeDesc) {
                     searchBody['codeDesc'] = searchCodeDto.codeDesc;

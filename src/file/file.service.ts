@@ -25,7 +25,14 @@ export class FileService {
         return `uploads/${insertId}_${seq}_${fileName}`;
     }
     
-    async searchFileNames(searchFilesDto: SearchFilesDto): Promise<Map<string, string>[]> {
+    /**
+     * @param searchFilesDto - 검색조건
+     * @param fileNameType - 파일명 추출조건\
+     * 0 : 업로드/다운로드 파일명 (default)\
+     * 1 : db상의 파일명
+     * @returns 
+     */
+    async searchFileNames(searchFilesDto: SearchFilesDto, fileNameType: number): Promise<{ fileName: string }[]> {
         try {
             let searchMap = {};
             if(searchFilesDto.seq) {
@@ -38,16 +45,24 @@ export class FileService {
                 searchMap['fileName'] = searchFilesDto.fileName;
             }
 
-            let uploadFileNames = [];
+            let uploadFileNames: { fileName: string }[] = [];
             let uploadedFiles = await this.fileRepository.find({where: searchMap});
-            for(let uploadedFile of uploadedFiles) {
-                uploadFileNames.push({fileName: this.getRealFileName(uploadedFile.fileName)})
+
+            if(fileNameType !== null && fileNameType === 1) { // db상의 파일명
+                for(let uploadedFile of uploadedFiles) {
+                    uploadFileNames.push({fileName: uploadedFile.fileName})
+                }
+            } else {
+                for(let uploadedFile of uploadedFiles) {
+                    uploadFileNames.push({fileName: this.getRealFileName(uploadedFile.fileName)})
+                }
             }
             return uploadFileNames;
         } catch(error) {
             return null;
         }
     }
+    
     async getSavedFileName(insertId: string | number, downloadFilesDto: DownloadFileDto): Promise<string> {
         try {
             downloadFilesDto.fileName = this.getSaveFileName(insertId, downloadFilesDto.seq, downloadFilesDto.fileName);
@@ -57,32 +72,6 @@ export class FileService {
             return null;
         }
     }
-    
-    // downloadFile(savedFileName: string, res: Response) {
-    //     const filePath = path.resolve(__dirname, "../../", savedFileName);
-    //     console.log(`File path: ${filePath}, File name: ${savedFileName}`);
-    
-    //     if (!fs.existsSync(filePath)) {
-    //         throw new Error(`File not found: ${filePath}`);
-    //     }
-    
-    //     const stat = fs.statSync(filePath);
-    //     if (stat.isDirectory()) {
-    //         throw new Error(`Provided path is a directory, not a file: ${filePath}`);
-    //     }
-    
-    //     res.setHeader('Content-Type', 'application/octet-stream');
-    //     res.setHeader('Content-Disposition', `attachment; filename="${this.getRealFileName(savedFileName)}"`);
-    //     res.setHeader('Content-Length', stat.size);
-    
-    //     const fileStream = fs.createReadStream(filePath);
-    //     fileStream.pipe(res);
-    
-    //     fileStream.on('error', (err) => {
-    //         console.error('Error reading file stream:', err);
-    //         res.status(500).send('Error reading file');
-    //     });
-    // }
     
     downloadFile(savedFileName: string, res: Response) {
         // 파일 경로를 안전하게 생성 (fileName은 이미 uploads/로 시작하므로 split할 필요 없음)

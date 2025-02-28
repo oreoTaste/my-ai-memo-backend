@@ -2,6 +2,10 @@ import { Global, Module } from '@nestjs/common';
 import { MulterModule } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { existsSync, mkdirSync } from 'fs';
+import { ImageAnalyzerService } from './image-analyzer.service';
+import { Code } from 'src/code/entity/code.entity';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { UploadFile } from 'src/file/entity/file.entity';
 
 @Global()
 @Module({
@@ -24,10 +28,11 @@ import { existsSync, mkdirSync } from 'fs';
         limits: {
           fileSize: 1024 * 1024 * 1024,  // 1GB로 파일 크기 제한 설정
         }
-      })  
+      }),
+      TypeOrmModule.forFeature([Code, UploadFile]),
     ],
-  providers: [],
+  providers: [ImageAnalyzerService],
   controllers: [],
-  exports: [MulterModule]
+  exports: [MulterModule, ImageAnalyzerService]
 })
 export class CommonModule {}

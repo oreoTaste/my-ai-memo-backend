@@ -5,11 +5,13 @@ import { AuthUserDto } from 'src/user/dto/user.dto';
 import { DeleteMemoResultDto, InsertMemoDto, InsertMemoResultDto, SearchMemoDto, SearchMemoResultDto, UpdateMemoDto, UpdateMemoResultDto } from './dto/memo.dto';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { FileService } from 'src/file/file.service';
+import { ImageAnalyzerService } from 'src/common/image-analyzer.service';
 
 @Controller('memo')
 export class MemoController {
     constructor(private readonly memoService: MemoService, 
-                private readonly fileService: FileService
+                private readonly fileService: FileService,
+                private readonly imageAnalyzer: ImageAnalyzerService
             ){}
 
     @Get('list')
@@ -19,7 +21,7 @@ export class MemoController {
             let memos = await this.memoService.searchMemo(authUser.id, searchMemoDto);
 
             for (let memo of memos) {
-                let fileName = await this.fileService.searchFileNames({ fileFrom: "MEMO", seq: memo.seq });
+                let fileName = await this.fileService.searchFileNames({ fileFrom: "MEMO", seq: memo.seq }, 0);
                 memo['files'] = fileName || [];
             }            
             return new SearchMemoResultDto(memos);
@@ -77,5 +79,27 @@ export class MemoController {
         }
         return new DeleteMemoResultDto(null, false, ["couldn't delete memo"]);
     }
+
+    @Post('/memo/get-api-key')
+    async getAPIkey(@AuthUser() authUser: AuthUserDto,
+                  @Query('seq') seq: number
+                  ) {
+        let apiKey = (await this.imageAnalyzer.getAPIKeys(1))[0].API_KEY;
+        // 추출한 API_KEY는 사용처리
+        let usageMap = new Map();
+        usageMap.set(apiKey, 1);
+        await this.imageAnalyzer.updateStatusOfAPIKeys(usageMap);
+
+        return apiKey;
+    }
+
+    @Post('analyze')
+    async analyze(@AuthUser() authUser: AuthUserDto,
+                  @Query('seq') seq: number
+                  ) {
+        let files = await this.fileService.searchFileNames({fileFrom: "MEMO", seq}, 1);
+        this.imageAnalyzer.run(files, seq, authUser.id);
+    }
+
 
 }

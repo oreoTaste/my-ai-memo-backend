@@ -1,14 +1,27 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
 import axios from 'axios';
+import { CodeService } from 'src/code/code.service';
+import { Code } from 'src/code/entity/code.entity';
 import { SearchTodoResultDto, TodoDto } from 'src/todo/dto/todo.dto';
 import { TodoService } from 'src/todo/todo.service';
 import { UserService } from 'src/user/user.service';
+import { Like, Repository } from 'typeorm';
 
 @Injectable()
 export class TaskService {
     private readonly logger = new Logger(TaskService.name);
-    constructor(private readonly todoService: TodoService, private readonly userService: UserService) {}
+    constructor(private readonly todoService: TodoService, private readonly userService: UserService, @InjectRepository(Code) private codeRepository: Repository<Code>) {}
+
+    @Cron('0 0 1 * * *', {
+      timeZone: 'Asia/Seoul', // 한국 표준시 기준
+    })
+    async initializeAPIKEYS() {
+      let codeList = await this.codeRepository.find({ where: {codeGroup: "CC004", code: Like("API_KEY%"), useYn: "Y"}});
+      codeList.forEach(el => el.codeDesc = "0");
+      await this.codeRepository.save(codeList);
+    }
 
     @Cron('0 0 9 * * *', {
         timeZone: 'Asia/Seoul', // 한국 표준시 기준

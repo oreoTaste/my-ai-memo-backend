@@ -15,7 +15,7 @@ export class FileController {
                      @Query() downloadFileDto: DownloadFileDto,
                      @Res() res: Response) {
         if(authUser) {
-            let savedFileName = await this.fileService.getSavedFileName(1, downloadFileDto);
+            let savedFileName = await this.fileService.getSavedFileName(authUser.id, downloadFileDto);
             console.log(`controller : fileName : ${savedFileName}`);
             this.fileService.downloadFile(savedFileName, res);
         }
