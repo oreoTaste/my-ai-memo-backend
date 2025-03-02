@@ -16,7 +16,7 @@ export class FileService {
         private fileRepository: Repository<UploadFile>
     ){}
 
-    private getRealFileName(savedFileName: string) {
+    public getRealFileName(savedFileName: string) {
         let match = savedFileName.match(/[^_]+_[^_]+_(.*)/);
         return match ? match[1] : savedFileName;
     }

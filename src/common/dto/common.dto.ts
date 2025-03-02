@@ -1,4 +1,4 @@
-import { IsNotEmpty } from "class-validator";
+import { IsNotEmpty, IsOptional } from "class-validator";
 
 export class CommonResultDto {
     constructor(result: boolean, message: string[]) {
@@ -14,4 +14,15 @@ export class CommonResultDto {
 
     message: string[] = ['success'];
 
+}
+
+export class getAPIKeyResultDto extends CommonResultDto {
+    constructor(apiKey: string, result?: boolean, message?: string[]) {
+        super(result == undefined ? true : result
+            , message == undefined ? ['success'] : message);
+        this.apiKey = apiKey ? apiKey : null;
+    }
+
+    @IsOptional()
+    apiKey?: string;
 }

@@ -6,6 +6,7 @@ import { DeleteMemoResultDto, InsertMemoDto, InsertMemoResultDto, SearchMemoDto,
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { FileService } from 'src/file/file.service';
 import { ImageAnalyzerService } from 'src/common/image-analyzer.service';
+import { getAPIKeyResultDto } from 'src/common/dto/common.dto';
 
 @Controller('memo')
 export class MemoController {
@@ -17,16 +18,16 @@ export class MemoController {
     @Get('list')
     async searchMemo(@AuthUser() authUser: AuthUserDto,
              @Query() searchMemoDto: SearchMemoDto) : Promise<SearchMemoResultDto>{
-        if(authUser) {
-            let memos = await this.memoService.searchMemo(authUser.id, searchMemoDto);
-
-            for (let memo of memos) {
-                let fileName = await this.fileService.searchFileNames({ fileFrom: "MEMO", seq: memo.seq }, 0);
-                memo['files'] = fileName || [];
-            }            
-            return new SearchMemoResultDto(memos);
+        if(!authUser) {
+            return new SearchMemoResultDto(null, false, ['please login first']);
         }
-        return new SearchMemoResultDto(null, false, ["couldn't find any memo"]);
+        let memos = await this.memoService.searchMemo(authUser.id, searchMemoDto);
+
+        for (let memo of memos) {
+            let fileName = await this.fileService.searchFileNames({ fileFrom: "MEMO", seq: memo.seq }, 0);
+            memo['files'] = fileName || [];
+        }            
+        return new SearchMemoResultDto(memos);    
     }
 
     @Post('insert')
@@ -34,71 +35,78 @@ export class MemoController {
     async insertMemo(@AuthUser() authUser: AuthUserDto,
                      @Body() insertMemoDto: InsertMemoDto,
                      @UploadedFiles() files: Array<Express.Multer.File>) : Promise<InsertMemoResultDto> {
-        if(authUser) {
-            const insertResult = await this.memoService.insertMemo(authUser.id, insertMemoDto);
-            try {
-                for(let file of files) {
-                    if (!file.path) {
-                    console.error('File is undefined.');
-                    throw new Error('File is undefined.');
-                    }
-                }            
-                await this.fileService.insertFiles(1, files, "MEMO", insertResult.raw.seq);
-            } catch (error) {
-                console.error('Error saving file:', error);
-                return new InsertMemoResultDto(insertResult.raw, false, ['failed to save file']);
-            }
-            return new InsertMemoResultDto(insertResult.raw);
+        if(!authUser) {
+            return new InsertMemoResultDto(null, false, ['please login first']);
         }
-        return new InsertMemoResultDto(null, false, ["couldn't insert memo"]);
+        const insertResult = await this.memoService.insertMemo(authUser.id, insertMemoDto);
+        try {
+            for(let file of files) {
+                if (!file.path) {
+                console.error('File is undefined.');
+                throw new Error('File is undefined.');
+                }
+            }            
+            await this.fileService.insertFiles(1, files, "MEMO", insertResult.raw.seq);
+        } catch (error) {
+            console.error('Error saving file:', error);
+            return new InsertMemoResultDto(insertResult.raw, false, ['failed to save file']);
+        }
+        return new InsertMemoResultDto(insertResult.raw);    
     }
 
     @Post('update')
     async updateMemo(@AuthUser() authUser: AuthUserDto,
                      @Body() updateMemoDto: UpdateMemoDto) : Promise<UpdateMemoResultDto> {
-        if(authUser) {
-            const updateResult = await this.memoService.updateMemo(authUser.id, updateMemoDto);
-            return new UpdateMemoResultDto(updateResult);
+        if(!authUser) {
+            return new UpdateMemoResultDto(null, false, ['please login first']);
         }
-        return new UpdateMemoResultDto(null, false, ["couldn't update memo"]);
+
+        const updateResult = await this.memoService.updateMemo(authUser.id, updateMemoDto);
+        return new UpdateMemoResultDto(updateResult);    
     }
 
     @Delete('delete')
     async deleteMemo(@AuthUser() authUser: AuthUserDto,
                      @Query('seq') seq: number
                     ) : Promise<DeleteMemoResultDto> {
-        if(authUser) {
-            const memoToDelete = await this.memoService.searchMemo(authUser.id, { seq });
-            if(memoToDelete.length == 1) {
-                const deleteResult = await this.memoService.deleteMemo(seq);
-                await this.fileService.deleteFiles("MEMO", seq);
-                return new DeleteMemoResultDto(deleteResult);
-            } else {
-                return new DeleteMemoResultDto(null, false, ["couldn't find the exact memo"]);
-            }
+        if(!authUser) {
+            return new DeleteMemoResultDto(null, false, ['please login first']);
         }
-        return new DeleteMemoResultDto(null, false, ["couldn't delete memo"]);
-    }
+        const memoToDelete = await this.memoService.searchMemo(authUser.id, { seq });
+        if(memoToDelete.length == 1) {
+            const deleteResult = await this.memoService.deleteMemo(seq);
+            await this.fileService.deleteFiles("MEMO", seq);
+            return new DeleteMemoResultDto(deleteResult);
+        } else {
+            return new DeleteMemoResultDto(null, false, ["couldn't find the exact memo"]);
+        }
+}
 
-    @Post('/memo/get-api-key')
-    async getAPIkey(@AuthUser() authUser: AuthUserDto,
-                  @Query('seq') seq: number
-                  ) {
+    @Post('get-api-key')
+    async getAPIkey(@AuthUser() authUser: AuthUserDto): Promise<getAPIKeyResultDto> {
+        if(!authUser) {
+            return new getAPIKeyResultDto(null, false, ['please login first']);
+        }
+
         let apiKey = (await this.imageAnalyzer.getAPIKeys(1))[0].API_KEY;
         // 추출한 API_KEY는 사용처리
         let usageMap = new Map();
         usageMap.set(apiKey, 1);
         await this.imageAnalyzer.updateStatusOfAPIKeys(usageMap);
 
-        return apiKey;
+        return new getAPIKeyResultDto(apiKey);
     }
 
     @Post('analyze')
     async analyze(@AuthUser() authUser: AuthUserDto,
                   @Query('seq') seq: number
-                  ) {
+                  ): Promise<void> {
+        if(!authUser) {
+            return;
+        }
+
         let files = await this.fileService.searchFileNames({fileFrom: "MEMO", seq}, 1);
-        this.imageAnalyzer.run(files, seq, authUser.id);
+        this.imageAnalyzer.run(files, seq, authUser.id);    
     }
 
 

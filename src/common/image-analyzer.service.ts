@@ -9,6 +9,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, Like } from "typeorm";
 import { Code } from "src/code/entity/code.entity";
 import { UploadFile } from "src/file/entity/file.entity";
+import { FileService } from "src/file/file.service";
 
 type DynamicData = { [key: string]: any };
 
@@ -16,16 +17,17 @@ type DynamicData = { [key: string]: any };
 export class ImageAnalyzerService {
   private readonly logger = new Logger(ImageAnalyzerService.name);
   private sourceFilePath: string;
-  private sourceFileNames: { fileName: string; mimeType: string; apiKeyToUse: string }[] = [];
+  private sourceFileNames: { fileName: string; mimeType: string }[] = []; // apiKeyToUse 제거
   private imageExtensions: string[] = ["jpeg", "jpg", "png", "jfif", "gif", "webp"];
   private targetModel: string;
   private dataList: DynamicData[] = [];
   private allKeys: Set<string> = new Set();
 
   constructor(
-    private configService: ConfigService,
-    @InjectRepository(Code) private codeRepository: Repository<Code>,
-    @InjectRepository(UploadFile) private fileRepository: Repository<UploadFile>,
+    private readonly configService: ConfigService,
+    @InjectRepository(Code) private readonly codeRepository: Repository<Code>,
+    @InjectRepository(UploadFile) private readonly fileRepository: Repository<UploadFile>,
+    private readonly fileService: FileService,
   ) {
     this.sourceFilePath = this.configService.get<string>("SOURCE_FILE_PATH", "uploads");
     this.targetModel = this.configService.get<string>("TARGET_MODEL", "gemini-1.5-pro");
@@ -46,7 +48,27 @@ export class ImageAnalyzerService {
   private extractJSON(input: string): string | null {
     const regex = /{[\s\S]*}/;
     const match = input.match(regex);
-    return match ? match[0] : null;
+    if (!match) {
+      this.logger.warn("No valid JSON found in response.");
+      return null;
+    }
+  
+    let jsonString = match[0];
+    try {
+      JSON.parse(jsonString);
+      return jsonString;
+    } catch (e) {
+      this.logger.warn(`Invalid JSON detected: ${jsonString}. Attempting to fix...`);
+      jsonString = jsonString.replace(/,\s*"([^"]+)"\s*:/g, (match, key) => `, "${key}": `).replace(/\n/g, ", ");
+      try {
+        JSON.parse(jsonString);
+        this.logger.log(`Fixed JSON: ${jsonString}`);
+        return jsonString;
+      } catch (fixError) {
+        this.logger.error(`Failed to fix JSON: ${fixError.message}`);
+        return null;
+      }
+    }
   }
 
   private async makeFile(seq: number, insertId: number) {
@@ -82,7 +104,6 @@ export class ImageAnalyzerService {
     try {
       const files: { fileName: string; mimeType: string }[] = [];
   
-      // 입력받은 fileNames 배열을 순회하며 유효성 검사 및 정보 추출
       for (const fileMap of fileNames) {
         const fileName = fileMap.fileName;
         if (!fileName) {
@@ -97,7 +118,7 @@ export class ImageAnalyzerService {
         if (isValidImage) {
           files.push({
             fileName: fileName,
-            mimeType: mime.lookup(fileName) || "image/jpeg", // MIME 타입 추정
+            mimeType: mime.lookup(fileName) || "image/jpeg",
           });
         } else {
           this.logger.warn(`Skipping non-image file: ${fileName}`);
@@ -109,143 +130,103 @@ export class ImageAnalyzerService {
         return;
       }
   
-      // API 키 할당 로직 (기존 그대로 유지)
-      const selectedKeys = await this.getAPIKeys(files.length);
-      let keyIndex = 0;
-      let remainingInCurrentKey = 49 - (Number(selectedKeys[0].usage) || 0);
-  
-      for (const file of files) {
-        if (remainingInCurrentKey <= 0 && keyIndex < selectedKeys.length - 1) {
-          keyIndex++;
-          remainingInCurrentKey = 49 - (Number(selectedKeys[keyIndex].usage) || 0);
-        }
-        this.sourceFileNames.push({
-          ...file,
-          apiKeyToUse: selectedKeys[keyIndex].API_KEY, // remark가 실제 API 키
-        });
-        remainingInCurrentKey--;
-      }
+      this.sourceFileNames = files; // API 키는 여기서 할당하지 않음
     } catch (err) {
       this.logger.error(`Error processing fileNames: ${err.message}`, err.stack);
     }
   }
 
-  private async processDirectory() {
-    try {
-      const dir = await this.openDirAsync(this.sourceFilePath);
-      let file: fs.Dirent | null;
-      const files: { fileName: string; mimeType: string }[] = [];
-
-      while ((file = await this.readDirAsync(dir)) !== null) {
-        if (file.isFile() && this.imageExtensions.some((el) => file.name.toLowerCase().endsWith(el))) {
-          files.push({
-            fileName: file.name,
-            mimeType: mime.lookup(file.name) || "image/jpeg",
-          });
-        }
-      }
-      await dir.close();
-
-      // API 키 할당
-      const selectedKeys = await this.getAPIKeys(files.length);
-      let keyIndex = 0;
-      let remainingInCurrentKey = 49 - (Number(selectedKeys[0].usage) || 0);
-
-      for (const file of files) {
-        if (remainingInCurrentKey <= 0 && keyIndex < selectedKeys.length - 1) {
-          keyIndex++;
-          remainingInCurrentKey = 49 - (Number(selectedKeys[keyIndex].usage) || 0);
-        }
-        this.sourceFileNames.push({
-          ...file,
-          apiKeyToUse: selectedKeys[keyIndex].API_KEY, // remark가 실제 API 키
-        });
-        remainingInCurrentKey--;
-      }
-    } catch (err) {
-      this.logger.error(`Error processing directory: ${err.message}`, err.stack);
+  private async analyzePhotosInBatch(batchSize: number = 5) {
+    if (!this.sourceFileNames.length) {
+      this.logger.warn("No images to analyze.");
+      return;
     }
-  }
 
-  private async analyzePhoto() {
-    const prompt = '이미지에서 뽑아낼 수 있는 속성을 JSON 형태로, 중첩 객체 없이 한 겹으로만 만들어서 한글로 대답해줘. 속성 이름은 상위 속성과 하위 속성을 "-"로 연결해 평평하게 표현해. (예시: {"병원명": "여의도 성모 내과", "우안-구면렌즈굴절력": -8.00, "우안-난시축": 175, "좌안-구면렌즈굴절력": -6.25, "동공간거리": 62})';
-    const usageMap = new Map<string, number>(); // API 키별 성공 횟수 집계
-  
-    for (const [index, { fileName, mimeType, apiKeyToUse }] of this.sourceFileNames.entries()) {
-      const genAI = new GoogleGenerativeAI(apiKeyToUse);
+    const usageMap = new Map<string, number>();
+    const batches: { fileName: string; mimeType: string }[][] = [];
+    for (let i = 0; i < this.sourceFileNames.length; i += batchSize) {
+      batches.push(this.sourceFileNames.slice(i, i + batchSize));
+    }
+
+    // 필요한 API 호출 횟수 계산
+    const requiredCalls = batches.length;
+    const selectedKeys = await this.getAPIKeys(requiredCalls);
+    let keyIndex = 0;
+    let remainingInCurrentKey = 50 - (Number(selectedKeys[0].usage) || 0);
+
+    for (const batch of batches) {
+      if (remainingInCurrentKey < 1 && keyIndex < selectedKeys.length - 1) {
+        keyIndex++;
+        remainingInCurrentKey = 50 - (Number(selectedKeys[keyIndex].usage) || 0);
+      }
+
+      const apiKey = selectedKeys[keyIndex].API_KEY;
+      const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: this.targetModel });
-      const imageParts = [this.fileToGenerativePart(fileName, mimeType)];
-  
+
+      const imageParts = batch.map(({ fileName, mimeType }) =>
+        this.fileToGenerativePart(fileName, mimeType)
+      );
+
+      const prompt = `
+        여러 이미지를 분석하여 각 이미지에서 뽑아낼 수 있는 속성을 JSON 형태로 반환해줘.
+        반환 형식은 파일명을 키로 하고, 해당 이미지의 속성을 평평한 객체로 만들어 한글로 대답해.
+        속성 이름은 상위 속성과 하위 속성을 "-"로 연결해 중첩 없이 한 겹으로 표현해.
+        모든 값은 문자열로 처리하며, 개행 문자(\\n)나 공백은 하나의 값 안에 포함시켜 단일 문자열로 만들어줘.
+        잘못된 JSON 형식이 되지 않도록 주의하고, 모든 속성과 값이 완전한 키-값 쌍으로 구성되게 해줘.
+        예시:
+        {
+          "image1.jpg": {"병원명": "여의도 성모 내과", "사업의종류": "광고, 홍보 도소매, 컴퓨터 소프트웨어", "동공간거리": "62"},
+          "image2.jpg": {"병원명": "강남 안과", "사업의종류": "전자상거래, 소프트웨어 개발", "좌안-구면렌즈굴절력": "-6.25"}
+        }
+        아래는 분석할 이미지 파일명 목록이야:
+        ${batch.map(f => this.fileService.getRealFileName(f.fileName)).join(", ")}
+      `;
+      
       try {
         const generatedContent = await model.generateContent([prompt, ...imageParts]);
         const jsonString = this.extractJSON(generatedContent.response.text());
         this.logger.log("jsonString : " + jsonString);
         const generatedJson = jsonString ? JSON.parse(jsonString) : {};
 
-        this.logger.log("generatedJson : " + generatedJson);
+        for (const [fileName, attributes] of Object.entries(generatedJson)) {
+          const processedAttributes = Object.fromEntries(
+            Object.entries(attributes as object).map(([key, value]) => [
+              key,
+              typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)
+            ])
+          );
+          this.dataList.push({ fileName, ...processedAttributes });
+        }
 
-        // 값이 객체일 경우 문자열로 변환
-        const processedJson = Object.fromEntries(
-          Object.entries(generatedJson).map(([key, value]) => [
-            key,
-            typeof value === 'object' && value !== null ? JSON.stringify(value) : value
-          ])
-        );
-
-        this.logger.log("processedJson : " + processedJson);
-        this.dataList.push(processedJson);
-  
-        // 성공 횟수 집계
-        usageMap.set(apiKeyToUse, (usageMap.get(apiKeyToUse) || 0) + 1);
+        usageMap.set(apiKey, (usageMap.get(apiKey) || 0) + 1); // 배치당 1회 사용
+        remainingInCurrentKey--;
       } catch (error) {
-        this.logger.error(`Failed to analyze ${fileName}: ${error.message}`);
+        this.logger.error(`Failed to analyze batch: ${error.message}`);
+        batch.forEach(({ fileName }) => {
+          this.dataList.push({ fileName, error: "Analysis failed" });
+        });
+        usageMap.set(apiKey, (usageMap.get(apiKey) || 0) + 1); // 실패해도 호출로 간주
+        remainingInCurrentKey--;
       }
-  
-      // 파일이 1개 이상이고 마지막 파일이 아니면 10초 대기
-      if (this.sourceFileNames.length > 1 && index < this.sourceFileNames.length - 1) {
-        this.logger.log(`Processed ${fileName}, waiting 10 seconds...`);
-        await this.sleep(10000); // 10000ms = 10초
+
+      if (batches.length > 1 && batch !== batches[batches.length - 1]) {
+        this.logger.log("Waiting 10 seconds before next batch...");
+        await this.sleep(10000);
       }
     }
-  
-    // codeDesc (사용 횟수) 업데이트
+
     await this.updateStatusOfAPIKeys(usageMap);
   }
-  
-  // sleep 헬퍼 함수
+
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  private openDirAsync(path: string): Promise<fs.Dir> {
-    if (!fs.existsSync(path)) {
-      fs.mkdirSync(path);
-    }
-    return new Promise((resolve, reject) => {
-      fs.opendir(path, (err, dir) => {
-        if (err) reject(err);
-        else resolve(dir);
-      });
-    });
-  }
-
-  private readDirAsync(dir: fs.Dir): Promise<fs.Dirent | null> {
-    return new Promise((resolve, reject) => {
-      dir.read((err, file) => {
-        if (err) reject(err);
-        else resolve(file);
-      });
-    });
-  }
-
-  /**
-   * 사용횟수에 맞는 API 키를 추출한다
-   * @param countTobeUsed - 사용횟수 (number)
-   */
-  public async getAPIKeys(countTobeUsed: number = 1):Promise<{usage: number, API_KEY: string}[]> {
+  public async getAPIKeys(countTobeUsed: number = 1): Promise<{ usage: number, API_KEY: string }[]> {
     const apiKeys = await this.codeRepository.find({
       where: { codeGroup: "CC004", code: Like("API_KEY%"), useYn: "Y" },
-      order: { code: "ASC" }, // 순서대로 사용
+      order: { code: "ASC" },
     });
 
     if (apiKeys.length === 0) {
@@ -253,21 +234,20 @@ export class ImageAnalyzerService {
       throw new Error("No valid GOOGLE_API_KEY found");
     }
 
-    // 사용 가능한 키 확인 (codeDesc는 사용 횟수)
-    const availableKeys = apiKeys.filter((key) => (Number(key.codeDesc) || 0) < 49);
-    let totalRemaining = availableKeys.reduce((sum, key) => sum + (49 - (Number(key.codeDesc) || 0)), 0);
+    const availableKeys = apiKeys.filter((key) => (Number(key.codeDesc) || 0) < 50); // 50번 미만으로 수정
+    let totalRemaining = availableKeys.reduce((sum, key) => sum + (50 - (Number(key.codeDesc) || 0)), 0);
 
     if (totalRemaining < countTobeUsed) {
       this.logger.error(`Total remaining usage (${totalRemaining}) is less than required (${countTobeUsed})`);
       throw new Error("Insufficient total remaining usage across all keys");
     }
 
-    const selectedKeys: {usage: number, API_KEY: string}[] = [];
+    const selectedKeys: { usage: number, API_KEY: string }[] = [];
     let remainingCount = countTobeUsed;
     for (const key of availableKeys) {
-      const keyRemaining = 49 - (Number(key.codeDesc) || 0);
+      const keyRemaining = 50 - (Number(key.codeDesc) || 0);
       if (remainingCount > 0) {
-        selectedKeys.push({usage: Number(key.codeDesc) || 0, API_KEY: key.remark});
+        selectedKeys.push({ usage: Number(key.codeDesc) || 0, API_KEY: key.remark });
         remainingCount -= Math.min(keyRemaining, remainingCount);
       }
       if (remainingCount <= 0) break;
@@ -277,45 +257,31 @@ export class ImageAnalyzerService {
     return selectedKeys;
   }
 
-  /**
-   * API 키의 사용횟수를 차감한다.
-   * @param usageMap - API 키(문자열)와 사용 횟수(숫자)를 포함한 Map
-   * @example
-   * const usageMap = new Map([
-   *   ["API_KEY_123", 5],
-   *   ["API_KEY_456", 10]
-   * ]);
-   */
-  public async updateStatusOfAPIKeys(usageMap: Map<string, number>):Promise<void> {
+  public async updateStatusOfAPIKeys(usageMap: Map<string, number>): Promise<void> {
     await this.codeRepository.manager.transaction(async (manager) => {
-      // codeDesc (사용 횟수) 업데이트
       for (const [apiKey, count] of usageMap) {
         await manager
-        .createQueryBuilder()
-        .update(Code)
-        .set({
-          codeDesc: () => `TO_CHAR((TO_NUMBER(codeDesc) + ${count}))`
-        })
-        .where({
-          codeGroup: "CC004",
-          code: Like("API_KEY%"),
-          remark: apiKey,
-          useYn: "Y"
-        })
-        .execute();
+          .createQueryBuilder()
+          .update(Code)
+          .set({
+            codeDesc: () => `TO_CHAR((TO_NUMBER(codeDesc) + ${count}))`
+          })
+          .where({
+            codeGroup: "CC004",
+            code: Like("API_KEY%"),
+            remark: apiKey,
+            useYn: "Y"
+          })
+          .execute();
       }
     });
   }
 
-  public async run(fileNames: { fileName: string }[], seq: number, insertId: number) {
+  public async run(fileNames: { fileName: string }[], seq: number, insertId: number, batchSize: number = 5) {
     this.logger.log("Starting file analysis...");
-    if(fileNames === null || fileNames.length == 0) {
-      await this.processDirectory();
-    } else {
-      await this.processFiles(fileNames);
-    }
+    await this.processFiles(fileNames);
     this.logger.log(`Found ${this.sourceFileNames.length} image files`);
-    await this.analyzePhoto();
+    await this.analyzePhotosInBatch(batchSize);
     this.logger.log(`Analyzed ${this.dataList.length} files`);
     await this.makeFile(seq, insertId);
     this.logger.log("File analysis completed");
