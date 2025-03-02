@@ -10,12 +10,13 @@ import { Repository, Like } from "typeorm";
 import { Code } from "src/code/entity/code.entity";
 import { UploadFile } from "src/file/entity/file.entity";
 import { FileService } from "src/file/file.service";
+import { GetMemoAdviceDto } from "src/memo/dto/memo.dto";
 
 type DynamicData = { [key: string]: any };
 
 @Injectable()
-export class ImageAnalyzerService {
-  private readonly logger = new Logger(ImageAnalyzerService.name);
+export class AIAnalyzerService {
+  private readonly logger = new Logger(AIAnalyzerService.name);
   private sourceFilePath: string;
   private sourceFileNames: { fileName: string; mimeType: string }[] = []; // apiKeyToUse 제거
   private imageExtensions: string[] = ["jpeg", "jpg", "png", "jfif", "gif", "webp"];
@@ -219,6 +220,72 @@ export class ImageAnalyzerService {
     await this.updateStatusOfAPIKeys(usageMap);
   }
 
+  private async askPhotos(title: string, raw: string, files: Array<Express.Multer.File>): Promise<{ subject: string; advice: string }> {
+    const usageMap = new Map<string, number>();
+    const selectedKeys = await this.getAPIKeys(1);
+    const apiKey = selectedKeys[0].API_KEY;
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: this.targetModel });
+  
+    const imageParts = files.map(file => ({
+      inlineData: {
+        data: file.buffer.toString("base64"),
+        mimeType: file.mimetype || "image/jpeg",
+      },
+    }));
+
+    const ynImage = (files === null || files.length <= 0);
+  
+    const prompt = `
+      아래 제목, 본문${ynImage ? ", 그리고 이미지를": "을"} 통해 주제를 요약하고, 이에 대한 조언을 한글로 작성해줘.
+      결과는 반드시 JSON 형식으로 반환하며, "subject"와 "advice" 두 키를 포함해야 해.
+      - "subject": 본문 ${ ynImage ? "과 이미지" : "" }에서 도출된 주제 요약 (짧고 명확하게).
+      - "advice": 본문 ${ ynImage ? "과 이미지" : "" }에서 도출한 구체적인 조언 (자연스럽게).
+      잘못된 JSON 형식이 되지 않도록 주의하고, JSON만 반환해줘 (추가 텍스트 없음).
+      제목: "${title}"
+      본문: "${raw}"
+      ${ynImage ? "" : "이미지 파일명 목록:"}
+      ${files.map(f => f.originalname).join(", ")}
+      예시:
+      {
+        "subject": "사업체 업종 분석",
+        "advice": "가나소프트는 소프트웨어 개발 업종, 마커스코리아는 전자상거래와 광고 업종에 속합니다."
+      }
+    `;
+  
+    try {
+      const generatedContent = await model.generateContent([prompt, ...imageParts]);
+      const jsonString = this.extractJSON(generatedContent.response.text());
+      this.logger.log(`Raw answer: ${jsonString}`);
+  
+      // JSON 파싱
+      const parsedResult = JSON.parse(jsonString);
+
+      // subject와 advice만 추출
+      const result = {
+        subject: parsedResult.subject || "알 수 없음",
+        advice: parsedResult.advice || "조언을 생성할 수 없습니다.",
+      };
+
+
+      usageMap.set(apiKey, 1);
+      await this.updateStatusOfAPIKeys(usageMap);
+  
+      return result;
+    } catch (error) {
+      this.logger.error(`Failed to ask photos: ${error.message}`);
+      const fallback = {
+        subject: "분석 실패",
+        advice: `오류 발생: ${error.message}`,
+      };
+  
+      usageMap.set(apiKey, 1);
+      await this.updateStatusOfAPIKeys(usageMap);
+  
+      return fallback;
+    }
+  }
+  
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
@@ -277,7 +344,7 @@ export class ImageAnalyzerService {
     });
   }
 
-  public async run(fileNames: { fileName: string }[], seq: number, insertId: number, batchSize: number = 5) {
+  public async analyzePhotos(fileNames: { fileName: string }[], seq: number, insertId: number, batchSize: number = 5) {
     this.logger.log("Starting file analysis...");
     await this.processFiles(fileNames);
     this.logger.log(`Found ${this.sourceFileNames.length} image files`);
@@ -286,4 +353,11 @@ export class ImageAnalyzerService {
     await this.makeFile(seq, insertId);
     this.logger.log("File analysis completed");
   }
+
+  public async getAdvice({raw, title}: GetMemoAdviceDto, files: Array<Express.Multer.File>): Promise<{ subject: string; advice: string }> {
+    let result = await this.askPhotos(title, raw, files);
+    this.logger.log(`File analysis completed, 주제: ${result.subject}, 조언: ${result.advice}`);
+    return result;
+  }
+
 }

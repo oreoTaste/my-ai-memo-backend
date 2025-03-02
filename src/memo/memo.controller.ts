@@ -2,17 +2,17 @@ import { Body, Controller, Delete, Get, Post, Query, UploadedFiles, UseIntercept
 import { MemoService } from './memo.service';
 import { AuthUser } from 'src/common/decorator/custom-decorator';
 import { AuthUserDto } from 'src/user/dto/user.dto';
-import { DeleteMemoResultDto, InsertMemoDto, InsertMemoResultDto, SearchMemoDto, SearchMemoResultDto, UpdateMemoDto, UpdateMemoResultDto } from './dto/memo.dto';
+import { DeleteMemoResultDto, GetMemoAdviceDto, GetMemoAdviceResultDto, InsertMemoDto, InsertMemoResultDto, SearchMemoDto, SearchMemoResultDto, UpdateMemoDto, UpdateMemoResultDto } from './dto/memo.dto';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { FileService } from 'src/file/file.service';
-import { ImageAnalyzerService } from 'src/common/image-analyzer.service';
+import { AIAnalyzerService } from 'src/common/ai-analyzer.service';
 import { getAPIKeyResultDto } from 'src/common/dto/common.dto';
 
 @Controller('memo')
 export class MemoController {
     constructor(private readonly memoService: MemoService, 
                 private readonly fileService: FileService,
-                private readonly imageAnalyzer: ImageAnalyzerService
+                private readonly aiAnalyzer: AIAnalyzerService
             ){}
 
     @Get('list')
@@ -88,11 +88,11 @@ export class MemoController {
             return new getAPIKeyResultDto(null, false, ['please login first']);
         }
 
-        let apiKey = (await this.imageAnalyzer.getAPIKeys(1))[0].API_KEY;
+        let apiKey = (await this.aiAnalyzer.getAPIKeys(1))[0].API_KEY;
         // 추출한 API_KEY는 사용처리
         let usageMap = new Map();
         usageMap.set(apiKey, 1);
-        await this.imageAnalyzer.updateStatusOfAPIKeys(usageMap);
+        await this.aiAnalyzer.updateStatusOfAPIKeys(usageMap);
 
         return new getAPIKeyResultDto(apiKey);
     }
@@ -106,8 +106,20 @@ export class MemoController {
         }
 
         let files = await this.fileService.searchFileNames({fileFrom: "MEMO", seq}, 1);
-        this.imageAnalyzer.run(files, seq, authUser.id);    
+        this.aiAnalyzer.analyzePhotos(files, seq, authUser.id);    
     }
 
+    @Post('get-advice')
+    @UseInterceptors(FilesInterceptor('files'))
+    async getMemoAdvice(@AuthUser() authUser: AuthUserDto,
+                        @Body() getMemoAdviceDto: GetMemoAdviceDto,
+                        @UploadedFiles() files: Array<Express.Multer.File>): Promise<GetMemoAdviceResultDto> {
+        if(!authUser) {
+            return new GetMemoAdviceResultDto(null, null, false, ['please login first']);
+        }
+
+        let result = await this.aiAnalyzer.getAdvice(getMemoAdviceDto, files);
+        return new GetMemoAdviceResultDto(result.advice, result.subject);
+    }    
 
 }

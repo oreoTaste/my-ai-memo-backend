@@ -7,6 +7,8 @@ import { DeleteResult, InsertResult, UpdateResult } from "typeorm";
 export class SearchMemoDto extends PartialType(Memo){}
 export class InsertMemoDto extends OmitType(Memo, ['seq', "createdAt", "insertId", "updateId", "modifiedAt"] as const){}
 export class UpdateMemoDto extends OmitType(Memo, ["createdAt", "insertId", "updateId", "modifiedAt"] as const){}
+export class GetMemoAdviceDto extends PickType(Memo, ["raw", "title"] as const){}
+
 export class SearchMemoResultDto extends CommonResultDto {
     constructor(memos: Memo[], result?: boolean, message?: string[]) {
         super(result == undefined ? true : result
@@ -47,6 +49,21 @@ export class DeleteMemoResultDto extends CommonResultDto {
 
     @IsOptional()
     deleteResult?: DeleteResult;
+}
+
+export class GetMemoAdviceResultDto extends CommonResultDto {
+    constructor(advice: string, subject: string, result?: boolean, message?: string[]) {
+        super(result == undefined ? true : result
+            , message == undefined ? ['success'] : message);
+            this.advice = advice ? advice : null;
+            this.subject = subject ? subject : null;
+        }
+
+    @IsOptional()
+    advice?: string;
+
+    @IsOptional()
+    subject?: string;
 }
 
 
