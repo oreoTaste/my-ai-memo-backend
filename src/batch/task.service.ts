@@ -1,62 +1,142 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import axios from 'axios';
-import { CodeService } from 'src/code/code.service';
+import axios, { AxiosInstance } from 'axios';
 import { Code } from 'src/code/entity/code.entity';
-import { SearchTodoResultDto, TodoDto } from 'src/todo/dto/todo.dto';
-import { TodoService } from 'src/todo/todo.service';
-import { UserService } from 'src/user/user.service';
+import { Todo } from 'src/todo/entity/todo.entity';
 import { Like, Repository } from 'typeorm';
+
+interface TodoWithUserInfo {
+  todo: Todo;
+  telegramId: string;
+  loginId: string;
+}
 
 @Injectable()
 export class TaskService {
-    private readonly logger = new Logger(TaskService.name);
-    constructor(private readonly todoService: TodoService, private readonly userService: UserService, @InjectRepository(Code) private codeRepository: Repository<Code>) {}
+  private readonly logger = new Logger(TaskService.name);
+  private telegramBotToken: string; // 필드로 유지하지만 초기화는 하지 않음
+  private telegramApi: AxiosInstance;
 
-    @Cron('0 0 1 * * *', {
-      timeZone: 'Asia/Seoul', // 한국 표준시 기준
-    })
-    async initializeAPIKEYS() {
-      let codeList = await this.codeRepository.find({ where: {codeGroup: "CC004", code: Like("API_KEY%"), useYn: "Y"}});
-      codeList.forEach(el => el.codeDesc = "0");
-      await this.codeRepository.save(codeList);
+  constructor(
+    @InjectRepository(Todo) private todoRepository: Repository<Todo>,
+    @InjectRepository(Code) private codeRepository: Repository<Code>,
+  ) {
+    // 초기화는 하지 않고, 필요할 때마다 가져오도록 설정
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_1AM, { timeZone: 'Asia/Seoul' })
+  async initializeAPIKEYS(): Promise<void> {
+    this.logger.log('[1AM] InitializeAPIKEYS batch started');
+    try {
+      await this.codeRepository.manager.transaction(async (manager) => {
+        await manager
+          .createQueryBuilder()
+          .update(Code)
+          .set({ codeDesc: '0' })
+          .where({
+            codeGroup: 'CC004',
+            code: Like('API_KEY%'),
+            useYn: 'Y',
+          })
+          .execute();
+      });
+      this.logger.log('API Keys initialized successfully');
+    } catch (error) {
+      this.logger.error('Failed to initialize API Keys', error.stack);
+      throw error;
+    }
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_9AM, { timeZone: 'Asia/Seoul' })
+  async sendDailyTodos(): Promise<void> {
+    this.logger.log('[9AM] SendDailyTodos batch started');
+    await this.initializeTelegramApi();
+
+    const todosWithUsers = await this.getTodos();
+    await Promise.all(
+      todosWithUsers.map(item =>
+        this.sendMessage(item).catch(error => {
+          this.logger.error(`Failed to send message for todo# ${item.todo.seq}: ${item.todo.title}`, error.stack);
+        }),
+      ),
+    );
+  }
+
+  private async getTodos(): Promise<TodoWithUserInfo[]> {
+    const now = new Date();
+    const todayString = now.toISOString().split('T')[0].replace(/-/g, '');
+
+    const queryBuilder = this.todoRepository
+      .createQueryBuilder('todo')
+      .innerJoin('Y_USER', 'user', 'todo.insertId = user.id')
+      .select('todo')
+      .addSelect('"user"."telegramId"', 'telegramId')
+      .addSelect('"user"."loginId"', 'loginId')
+      .where('todo.date = :todayString', { todayString })
+      .andWhere('"user"."telegramId" IS NOT NULL');;
+
+    const rawResults = await queryBuilder.getRawAndEntities();
+
+    return rawResults.entities.map((todo, index) => {
+      const raw = rawResults.raw[index];
+      return {
+        todo,
+        telegramId: raw.telegramId,
+        loginId: raw.loginId,
+      };
+    });
+  }
+
+  private async sendMessage(item: TodoWithUserInfo): Promise<void> {
+    const { todo, telegramId, loginId } = item;
+
+    if (!telegramId) {
+      this.logger.warn(`No valid telegramId found for user ${loginId || 'unknown'}`);
+      return;
     }
 
-    @Cron('0 0 9 * * *', {
-        timeZone: 'Asia/Seoul', // 한국 표준시 기준
-    })
-    async sendDailyTodos() {
-      for(let todo of (await this.getTodos()).todo) {
-        await this.sendMessage(todo);
+    const message = `[${todo.title}] ${todo.desc}`;
+    try {
+      const response = await this.telegramApi.post('/sendMessage', {
+        chat_id: telegramId,
+        text: message,
+        parse_mode: 'Markdown',
+      });
+      this.logger.log(`Message sent successfully to ${telegramId}: ${response.status}`);
+    } catch (error) {
+      this.logger.error(`Failed to send message to ${telegramId}`, error.stack);
+      throw error;
+    }
+  }
+
+  private async getTelegramBotToken(): Promise<string> {
+    try {
+      const telegramCode = await this.codeRepository.findOne({
+        where: {
+          codeGroup: 'CC004',
+          code: 'TELEGRAM',
+          useYn: 'Y',
+        },
+        select: ['codeDesc'],
+      });
+
+      if (!telegramCode || !telegramCode.codeDesc) {
+        throw new Error('Telegram bot token not found in CODE table');
       }
-    }
 
-    async getTodos(): Promise<SearchTodoResultDto> {
-      let now = new Date();
-      let todayString = `${now.getFullYear()}${1+now.getMonth() < 10 ? "0": ""}${1+now.getMonth()}${now.getDate() < 10 ? "0": ""}${now.getDate()}`
-      let tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1);
-      let tomorrowString = `${tomorrow.getFullYear()}${1+tomorrow.getMonth() < 10 ? "0": ""}${1+tomorrow.getMonth()}${tomorrow.getDate() < 10 ? "0": ""}${tomorrow.getDate()}`
-      return await this.todoService.searchTodos(null, {"dateStart": todayString, "dateEnd": tomorrowString});
+      return telegramCode.codeDesc;
+    } catch (error) {
+      this.logger.error('Failed to fetch Telegram bot token', error.stack);
+      throw error;
     }
-    async sendMessage(todo : TodoDto) {
-      try {
-        let telegramId = await (await this.userService.retreiveUserBySeq(todo.insertId))?.telegramId || null;
-        if(telegramId) {
-          let message = `[${todo.title}] ${todo.desc}`;
-        
-          let body = {
-            "chat_id": telegramId,
-            "text":message
-          }
-          let url = `https://api.telegram.org/bot7816669459:AAH_ikh2U6nfcEohVpLf0vMLUpQdN5t06iE/sendMessage`
-  
-            // axios로 요청 보내기
-            const response = await axios.post(url, body);
-            this.logger.log(`Message sent successfully: ${response.status}`);  
-        }
-      } catch (error) {
-        this.logger.error(`Failed to send message: ${error.message}`);
-      }
-    }
+  }
+
+  private async initializeTelegramApi(): Promise<void> {
+    this.telegramBotToken = await this.getTelegramBotToken();
+    this.telegramApi = axios.create({
+      baseURL: `https://api.telegram.org/bot${this.telegramBotToken}`,
+      timeout: 5000,
+    });
+  }
 }

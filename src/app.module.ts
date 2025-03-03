@@ -29,6 +29,7 @@ import { UploadFile } from './file/entity/file.entity';
 import { FileController } from './file/file.controller';
 import { QueryModule } from './query/query.modue';
 import { QueryController } from './query/query.controller';
+import { BatchModule } from './batch/batch.module';
 
 @Module({
   imports: [
@@ -64,9 +65,10 @@ import { QueryController } from './query/query.controller';
   , CommonModule
   , FileModule
   , QueryModule
+  , BatchModule
   ],
   controllers: [AppController],
-  providers: [AppService, TaskService],
+  providers: [AppService],
   exports: []
 })
 export class AppModule {
