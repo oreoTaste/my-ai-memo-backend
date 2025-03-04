@@ -20,14 +20,19 @@ export class SearchMemoResultDto extends CommonResultDto {
     memos?: Memo[];
 }
 export class InsertMemoResultDto extends CommonResultDto {
-    constructor(insertResult: InsertResult, result?: boolean, message?: string[]) {
+    constructor(insertResult: InsertResult, insertId: number, result?: boolean, message?: string[]) {
         super(result == undefined ? true : result
             , message == undefined ? ['success'] : message);
         this.insertResult = insertResult ? insertResult : null;
-    }
+        this.insertId = insertId ? insertId : null;
+        }
 
     @IsOptional()
     insertResult?: InsertResult;
+
+    @IsOptional()
+    insertId?: number;
+
 }
 export class UpdateMemoResultDto extends CommonResultDto {
     constructor(updateResult: UpdateResult, result?: boolean, message?: string[]) {
