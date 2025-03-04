@@ -19,7 +19,7 @@ export class AIAnalyzerService {
   private readonly logger = new Logger(AIAnalyzerService.name);
   private sourceFilePath: string;
   private sourceFileNames: { fileName: string; mimeType: string }[] = []; // apiKeyToUse 제거
-  private imageExtensions: string[] = ["jpeg", "jpg", "png", "jfif", "gif", "webp"];
+  private fileExtensions: string[] = ["jpeg", "jpg", "png", "jfif", "gif", "webp", "pdf"];
   private targetModel: string;
   private dataList: DynamicData[] = [];
   private allKeys: Set<string> = new Set();
@@ -111,23 +111,27 @@ export class AIAnalyzerService {
           this.logger.warn(`Skipping entry with no fileName in Map`);
           continue;
         }
+
+        if (fileName.endsWith('output.xlsx')) { // file already analyzed will be excepted
+          continue;
+        }
   
-        const isValidImage = this.imageExtensions.some((ext) =>
+        const isValidFile = this.fileExtensions.some((ext) =>
           fileName.toLowerCase().endsWith(ext)
         );
   
-        if (isValidImage) {
+        if (isValidFile) {
           files.push({
             fileName: fileName,
             mimeType: mime.lookup(fileName) || "image/jpeg",
           });
         } else {
-          this.logger.warn(`Skipping non-image file: ${fileName}`);
+          this.logger.warn(`Skipping non-valid file: ${fileName}`);
         }
       }
   
       if (files.length === 0) {
-        this.logger.warn("No valid image files found in the provided fileNames.");
+        this.logger.warn("No valid files found in the provided fileNames.");
         return;
       }
   
@@ -137,9 +141,9 @@ export class AIAnalyzerService {
     }
   }
 
-  private async analyzePhotosInBatch(batchSize: number = 5) {
+  private async analyzeFilesInBatch(batchSize: number = 5) {
     if (!this.sourceFileNames.length) {
-      this.logger.warn("No images to analyze.");
+      this.logger.warn("No files to analyze.");
       return;
     }
 
@@ -165,27 +169,27 @@ export class AIAnalyzerService {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: this.targetModel });
 
-      const imageParts = batch.map(({ fileName, mimeType }) =>
+      const fileParts = batch.map(({ fileName, mimeType }) =>
         this.fileToGenerativePart(fileName, mimeType)
       );
 
       const prompt = `
-        여러 이미지를 분석하여 각 이미지에서 뽑아낼 수 있는 속성을 JSON 형태로 반환해줘.
-        반환 형식은 파일명을 키로 하고, 해당 이미지의 속성을 평평한 객체로 만들어 한글로 대답해.
+        여러 파일을 분석하여 각 파일에서 뽑아낼 수 있는 속성을 JSON 형태로 반환해줘.
+        반환 형식은 파일명을 키로 하고, 해당 파일의 속성을 평평한 객체로 만들어 한글로 대답해.
         속성 이름은 상위 속성과 하위 속성을 "-"로 연결해 중첩 없이 한 겹으로 표현해.
         모든 값은 문자열로 처리하며, 개행 문자(\\n)나 공백은 하나의 값 안에 포함시켜 단일 문자열로 만들어줘.
         잘못된 JSON 형식이 되지 않도록 주의하고, 모든 속성과 값이 완전한 키-값 쌍으로 구성되게 해줘.
         예시:
         {
           "image1.jpg": {"병원명": "여의도 성모 내과", "사업의종류": "광고, 홍보 도소매, 컴퓨터 소프트웨어", "동공간거리": "62"},
-          "image2.jpg": {"병원명": "강남 안과", "사업의종류": "전자상거래, 소프트웨어 개발", "좌안-구면렌즈굴절력": "-6.25"}
+          "image2.pdf": {"병원명": "강남 안과", "사업의종류": "전자상거래, 소프트웨어 개발", "좌안-구면렌즈굴절력": "-6.25"}
         }
-        아래는 분석할 이미지 파일명 목록이야:
+        아래는 분석할 파일명 목록이야:
         ${batch.map(f => this.fileService.getRealFileName(f.fileName)).join(", ")}
       `;
       
       try {
-        const generatedContent = await model.generateContent([prompt, ...imageParts]);
+        const generatedContent = await model.generateContent([prompt, ...fileParts]);
         const jsonString = this.extractJSON(generatedContent.response.text());
         this.logger.log("jsonString : " + jsonString);
         const generatedJson = jsonString ? JSON.parse(jsonString) : {};
@@ -220,31 +224,31 @@ export class AIAnalyzerService {
     await this.updateStatusOfAPIKeys(usageMap);
   }
 
-  private async askPhotos(title: string, raw: string, files: Array<Express.Multer.File>): Promise<{ subject: string; advice: string }> {
+  private async askFiles(title: string, raw: string, files: Array<Express.Multer.File>): Promise<{ subject: string; advice: string }> {
     const usageMap = new Map<string, number>();
     const selectedKeys = await this.getAPIKeys(1);
     const apiKey = selectedKeys[0].API_KEY;
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: this.targetModel });
   
-    const imageParts = files.map(file => ({
+    const fileParts = files.map(file => ({
       inlineData: {
         data: file.buffer.toString("base64"),
         mimeType: file.mimetype || "image/jpeg",
       },
     }));
 
-    const ynImage = (files === null || files.length <= 0);
+    const ynFile = (files === null || files.length <= 0);
   
     const prompt = `
-      아래 제목, 본문${ynImage ? ", 그리고 이미지를": "을"} 통해 주제를 요약하고, 이에 대한 조언을 한글로 작성해줘.
+      아래 제목, 본문${ynFile ? ", 그리고 파일를": "을"} 통해 주제를 요약하고, 이에 대한 조언을 한글로 작성해줘.
       결과는 반드시 JSON 형식으로 반환하며, "subject"와 "advice" 두 키를 포함해야 해.
-      - "subject": 본문 ${ ynImage ? "과 이미지" : "" }에서 도출된 주제 요약 (짧고 명확하게).
-      - "advice": 본문 ${ ynImage ? "과 이미지" : "" }에서 도출한 구체적인 조언 (자연스럽게).
+      - "subject": 본문 ${ ynFile ? "과 파일" : "" }에서 도출된 주제 요약 (짧고 명확하게).
+      - "advice": 본문 ${ ynFile ? "과 파일" : "" }에서 도출한 구체적인 조언 (자연스럽게).
       잘못된 JSON 형식이 되지 않도록 주의하고, JSON만 반환해줘 (추가 텍스트 없음).
       제목: "${title}"
       본문: "${raw}"
-      ${ynImage ? "" : "이미지 파일명 목록:"}
+      ${ynFile ? "" : "파일명 목록:"}
       ${files.map(f => f.originalname).join(", ")}
       예시:
       {
@@ -254,7 +258,7 @@ export class AIAnalyzerService {
     `;
   
     try {
-      const generatedContent = await model.generateContent([prompt, ...imageParts]);
+      const generatedContent = await model.generateContent([prompt, ...fileParts]);
       const jsonString = this.extractJSON(generatedContent.response.text());
       this.logger.log(`Raw answer: ${jsonString}`);
   
@@ -344,18 +348,18 @@ export class AIAnalyzerService {
     });
   }
 
-  public async analyzePhotos(fileNames: { fileName: string }[], seq: number, insertId: number, batchSize: number = 5) {
+  public async analyzeFiles(fileNames: { fileName: string }[], seq: number, insertId: number, batchSize: number = 5) {
     this.logger.log("Starting file analysis...");
     await this.processFiles(fileNames);
-    this.logger.log(`Found ${this.sourceFileNames.length} image files`);
-    await this.analyzePhotosInBatch(batchSize);
+    this.logger.log(`Found ${this.sourceFileNames.length} files`);
+    await this.analyzeFilesInBatch(batchSize);
     this.logger.log(`Analyzed ${this.dataList.length} files`);
     await this.makeFile(seq, insertId);
     this.logger.log("File analysis completed");
   }
 
   public async getAdvice({raw, title}: GetMemoAdviceDto, files: Array<Express.Multer.File>): Promise<{ subject: string; advice: string }> {
-    let result = await this.askPhotos(title, raw, files);
+    let result = await this.askFiles(title, raw, files);
     this.logger.log(`File analysis completed, 주제: ${result.subject}, 조언: ${result.advice}`);
     return result;
   }

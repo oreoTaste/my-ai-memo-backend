@@ -105,7 +105,7 @@ export class TaskService {
       });
       this.logger.log(`Message sent successfully to ${telegramId}: ${response.status}`);
     } catch (error) {
-      this.logger.error(`Failed to send message to ${telegramId}`, error.stack);
+      this.logger.error(`Failed to send message to ${telegramId}`);
       throw error;
     }
   }
@@ -118,14 +118,14 @@ export class TaskService {
           code: 'TELEGRAM',
           useYn: 'Y',
         },
-        select: ['codeDesc'],
+        select: ['remark'],
       });
 
-      if (!telegramCode || !telegramCode.codeDesc) {
+      if (!telegramCode || !telegramCode.remark) {
         throw new Error('Telegram bot token not found in CODE table');
       }
 
-      return telegramCode.codeDesc;
+      return telegramCode.remark;
     } catch (error) {
       this.logger.error('Failed to fetch Telegram bot token', error.stack);
       throw error;

@@ -36,7 +36,7 @@ export class MemoController {
                      @Body() insertMemoDto: InsertMemoDto,
                      @UploadedFiles() files: Array<Express.Multer.File>) : Promise<InsertMemoResultDto> {
         if(!authUser) {
-            return new InsertMemoResultDto(null, false, ['please login first']);
+            return new InsertMemoResultDto(null, authUser.id, false, ['please login first']);
         }
         const insertResult = await this.memoService.insertMemo(authUser.id, insertMemoDto);
         try {
@@ -49,9 +49,9 @@ export class MemoController {
             await this.fileService.insertFiles(authUser.id, files, "MEMO", insertResult.raw.seq);
         } catch (error) {
             console.error('Error saving file:', error);
-            return new InsertMemoResultDto(insertResult.raw, false, ['failed to save file']);
+            return new InsertMemoResultDto(insertResult.raw, authUser.id, false, ['failed to save file']);
         }
-        return new InsertMemoResultDto(insertResult.raw);    
+        return new InsertMemoResultDto(insertResult.raw, authUser.id);    
     }
 
     @Post('update')
@@ -106,7 +106,7 @@ export class MemoController {
         }
 
         let files = await this.fileService.searchFileNames({fileFrom: "MEMO", seq}, 1);
-        this.aiAnalyzer.analyzePhotos(files, seq, authUser.id);    
+        this.aiAnalyzer.analyzeFiles(files, seq, authUser.id);    
     }
 
     @Post('get-advice')
