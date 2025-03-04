@@ -46,7 +46,7 @@ export class MemoController {
                 throw new Error('File is undefined.');
                 }
             }            
-            await this.fileService.insertFiles(1, files, "MEMO", insertResult.raw.seq);
+            await this.fileService.insertFiles(authUser.id, files, "MEMO", insertResult.raw.seq);
         } catch (error) {
             console.error('Error saving file:', error);
             return new InsertMemoResultDto(insertResult.raw, false, ['failed to save file']);
