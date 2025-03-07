@@ -48,7 +48,8 @@ export class TaskService {
     }
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_9AM, { timeZone: 'Asia/Seoul' })
+  // @Cron(CronExpression.EVERY_DAY_AT_9AM, { timeZone: 'Asia/Seoul' })
+  @Cron(CronExpression.EVERY_10_MINUTES, { timeZone: 'Asia/Seoul' })
   async sendDailyTodos(): Promise<void> {
     this.logger.log('[9AM] SendDailyTodos batch started');
     await this.initializeTelegramApi();
@@ -96,7 +97,7 @@ export class TaskService {
       return;
     }
 
-    const message = `[${todo.title}] ${todo.desc}`;
+    const message = `\[${todo.title}\]\n${todo.desc}`;
     try {
       const response = await this.telegramApi.post('/sendMessage', {
         chat_id: telegramId,
