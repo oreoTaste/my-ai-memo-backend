@@ -30,6 +30,7 @@ import { FileController } from './file/file.controller';
 import { QueryModule } from './query/query.modue';
 import { QueryController } from './query/query.controller';
 import { BatchModule } from './batch/batch.module';
+import { RecordController } from './record/record.controller';
 
 @Module({
   imports: [
@@ -52,7 +53,7 @@ import { BatchModule } from './batch/batch.module';
     password: process.env.DB_PASSWORD,
     database: 'xe',
     entities: [User, Memo, Record, CodeGroup, Code, Todo, UploadFile],
-    synchronize: true,
+    synchronize: false,
     logging:'all',
     dropSchema: false
     })
@@ -75,6 +76,6 @@ export class AppModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(LoggerMiddleware/* , IpCheckMiddleware */)
-      .forRoutes(AppController, UserController, MemoController, CodeController, TodoController, FileController, QueryController);
+      .forRoutes(AppController, UserController, MemoController, CodeController, TodoController, FileController, QueryController, RecordController);
   }  
 }
