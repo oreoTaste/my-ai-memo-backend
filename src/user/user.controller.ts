@@ -2,10 +2,23 @@ import { Body, Controller, Get, Post, Query, Session } from '@nestjs/common';
 import { UserService } from './user.service';
 import { AuthUser } from 'src/common/decorator/custom-decorator';
 import { AuthUserDto, InsertUserDto, InsertUserResultDto, ListUserResultDto, LoginUserDto, LoginUserResultDto, SearchUserDto, SearchUserResultDto } from './dto/user.dto';
+import { CommonResultDto } from 'src/common/dto/common.dto';
 
 @Controller("user")
 export class UserController {
   constructor(private readonly userService: UserService) {}
+
+  /**
+   * @description 세션체크
+   */
+  @Post('auth')
+  async authUser(@AuthUser() authUser: AuthUserDto): Promise<CommonResultDto>{
+    if(authUser.id) {
+      return new CommonResultDto(true, ['success']);
+    }
+    return new CommonResultDto(false, ['failed to authorize']);
+  }
+
 
   /**
    * @description 회원가입
