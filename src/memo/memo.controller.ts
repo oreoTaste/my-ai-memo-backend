@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Post, Query, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Logger, Post, Query, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { MemoService } from './memo.service';
 import { AuthUser } from 'src/common/decorator/custom-decorator';
 import { AuthUserDto } from 'src/user/dto/user.dto';
@@ -42,13 +42,13 @@ export class MemoController {
         try {
             for(let file of files) {
                 if (!file.path) {
-                console.error('File is undefined.');
-                throw new Error('File is undefined.');
+                    Logger.error('File is undefined.');
+                    throw new Error('File is undefined.');
                 }
             }            
             await this.fileService.insertFiles(authUser.id, files, "MEMO", insertResult.raw.seq);
         } catch (error) {
-            console.error('Error saving file:', error);
+            Logger.error('Error saving file:', error);
             return new InsertMemoResultDto(insertResult.raw, authUser.id, false, ['failed to save file']);
         }
         return new InsertMemoResultDto(insertResult.raw, authUser.id);    
@@ -74,13 +74,21 @@ export class MemoController {
         }
         const memoToDelete = await this.memoService.searchMemo(authUser.id, { seq });
         if(memoToDelete.length == 1) {
+            try {
+                await this.fileService.deleteFiles("MEMO", seq, authUser.id);
+            } catch(e) {
+                Logger.error(`failed to delete files of memo#: ${seq}`);
+            }
+
+            // db에서 삭제
             const deleteResult = await this.memoService.deleteMemo(seq);
-            await this.fileService.deleteFiles("MEMO", seq);
+            Logger.debug(`succeed to delete memo in db (${seq})`);
+
             return new DeleteMemoResultDto(deleteResult);
         } else {
             return new DeleteMemoResultDto(null, false, ["couldn't find the exact memo"]);
         }
-}
+    }
 
     @Post('get-api-key')
     async getAPIkey(@AuthUser() authUser: AuthUserDto): Promise<getAPIKeyResultDto> {

@@ -1,7 +1,7 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { CommonEntity } from "src/common/entity/common.entity";
 import { Memo } from "src/memo/entity/memo.entity";
-import { Entity, ManyToOne, PrimaryColumn } from "typeorm";
+import { Column, Entity, ManyToOne, PrimaryColumn } from "typeorm";
 
 @Entity({name: "Y_FILE"})
 export class UploadFile extends CommonEntity{
@@ -18,4 +18,9 @@ export class UploadFile extends CommonEntity{
     @PrimaryColumn({nullable: false, type: 'varchar2', length: 500, primaryKeyConstraintName: "Y_FILE_PK"})
     @ApiProperty()
     fileName: string;
+
+    @Column({nullable: true, type: "varchar2", length: 50})
+    @ApiProperty()
+    fileId: string;
+
 }

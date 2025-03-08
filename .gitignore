@@ -61,3 +61,7 @@ docker*
 
 # upload files
 /uploads
+
+# Google drive credietials
+token.json
+credentials.json
