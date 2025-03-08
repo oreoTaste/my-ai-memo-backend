@@ -6,7 +6,6 @@ import { CommonResultDto } from "src/common/dto/common.dto";
 export class LoginUserDto extends PickType(User, ['loginId', 'password'] as const){}
 export class InsertUserDto extends PickType(User, ['loginId', 'password', 'name'] as const){}
 export class SearchUserDto extends PartialType(PickType(User, ['loginId', 'name'] as const)){}
-
 export class InsertUserResultDto extends CommonResultDto {
     constructor(user: User, result?: boolean, message?: string[]) {
         super(result == undefined ? true : result
