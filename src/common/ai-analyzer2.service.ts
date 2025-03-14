@@ -234,7 +234,7 @@ export class AIAnalyzerService {
 
     const fileParts = files.map(file => ({
       inlineData: {
-        data: file.buffer.toString("base64"),
+        data: file.buffer?.toString("base64"),
         mimeType: file.mimetype || "image/jpeg",
       },
     }));
@@ -281,7 +281,7 @@ export class AIAnalyzerService {
   
       return result;
     } catch (error) {
-      this.logger.error(`Failed to ask photos: ${error.message}`);
+      this.logger.error(`Failed to ask files: ${error.message}`);
       const fallback = {
         subject: "분석 실패",
         advice: `오류 발생: ${error.message}`,

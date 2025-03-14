@@ -33,7 +33,7 @@ export class FileController {
             Logger.debug(`[downloadFile] fileName: ${uploadFile?.fileName}, fileId: ${uploadFile?.fileId}`);
 
             if(uploadFile.fileId) { // 체크1. db내 파일id가 있는지 확인
-                existGoogleDriveYn = true;
+                existGoogleDriveYn = false;
             }
             if(existGoogleDriveYn) { // 체크2. 구글 드라이브에 파일id가 있는지 확인
                 existGoogleDriveYn = await this.googleDriveService.fileExists(uploadFile.fileId, authUser.id);

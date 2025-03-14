@@ -31,7 +31,7 @@ export class AIAnalyzerService {
     private readonly fileService: FileService,
   ) {
     this.sourceFilePath = this.configService.get<string>("SOURCE_FILE_PATH", "uploads");
-    this.targetModel = this.configService.get<string>("TARGET_MODEL", "gemini-1.5-pro");
+    this.targetModel = this.configService.get<string>("TARGET_MODEL", "gemini-1.5-pro-002");
   }
 
   private fileToGenerativePart(fileName: string, mimeType: string) {
@@ -231,12 +231,24 @@ export class AIAnalyzerService {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: this.targetModel });
   
-    const fileParts = files.map(file => ({
-      inlineData: {
-        data: file.buffer.toString("base64"),
-        mimeType: file.mimetype || "image/jpeg",
-      },
-    }));
+    const fileParts = files.map(file => {
+      if (!file.path) {
+        throw new Error(`File path is missing for ${file.originalname}`);
+      }
+      const buffer = fs.readFileSync(file.path);  // 디스크에서 파일 읽기
+      return {
+        inlineData: {
+          data: buffer.toString("base64"),
+          mimeType: file.mimetype || mime.lookup(file.originalname) || "application/octet-stream"
+        }
+      };
+    });    
+    // const fileParts = files.map(file => ({
+    //   inlineData: {
+    //     data: file.buffer.toString("base64"),
+    //     mimeType: file.mimetype || mime.lookup(file.originalname) || "application/octet-stream"  // false 방지
+    //   },
+    // }));
 
     const ynFile = (files === null || files.length <= 0);
   
@@ -359,9 +371,13 @@ export class AIAnalyzerService {
   }
 
   public async getAdvice({raw, title}: GetMemoAdviceDto, files: Array<Express.Multer.File>): Promise<{ subject: string; advice: string }> {
-    let result = await this.askFiles(title, raw, files);
-    this.logger.log(`File analysis completed, 주제: ${result.subject}, 조언: ${result.advice}`);
-    return result;
+    try {
+      let result = await this.askFiles(title, raw, files);
+      this.logger.log(`File analysis completed, 주제: ${result.subject}, 조언: ${result.advice}`);
+      return result;  
+    } catch(e) {
+      return {subject:"오류", advice: e}
+    }
   }
 
 }

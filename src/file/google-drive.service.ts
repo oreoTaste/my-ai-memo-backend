@@ -430,7 +430,7 @@ export class GoogleDriveService {
 
             // 기타 오류는 로깅 후 예외 전파
             Logger.error(`[fileExists] Failed to check file ${fileId}: ${err.message}`);
-            throw new Error(`Error checking file existence: ${err.message}`);
+            return false;
         }
     }
 
