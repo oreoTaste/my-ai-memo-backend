@@ -5,6 +5,7 @@ import { AuthUserDto } from 'src/user/dto/user.dto';
 import { DownloadFileDto } from './dto/file.dto';
 import { Response } from 'express';
 import { GoogleDriveService } from './google-drive.service';
+import { UploadFile } from './entity/file.entity';
 
 @Controller('file')
 export class FileController {
@@ -67,49 +68,29 @@ export class FileController {
     async viewFile(
         @AuthUser() authUser: AuthUserDto,
         @Query() downloadFileDto: DownloadFileDto,
-        @Res({ passthrough: true }) res: Response
+        @Res() res: Response
     ): Promise<void> {
         if (!authUser) {
             throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
         }
-    
-        let uploadFile = null;
-        let existGoogleDriveYn = false; // 구글 드라이브 존재 여부
-    
+
+        let uploadFile : UploadFile;
         try {
-            // DB에서 파일 정보 가져오기
             uploadFile = await this.fileService.getSavedFileName(authUser.id, downloadFileDto);
             if (!uploadFile) {
                 throw new HttpException('File not found', HttpStatus.NOT_FOUND);
             }
-    
-            Logger.debug(`[viewFile] fileName: ${uploadFile?.fileName}, fileId: ${uploadFile?.fileId}`);
-    
-            // 1. DB에 fileId가 있는지 확인
-            if (uploadFile.fileId) {
-                existGoogleDriveYn = true;
-            }
-    
-            // 2. Google Drive에 파일이 존재하는지 확인
-            let viewUrl: string;
-            if (existGoogleDriveYn) {
-               existGoogleDriveYn = await this.googleDriveService.fileExists(uploadFile.fileId, authUser.id);
-            }
 
-            if (existGoogleDriveYn) {
-                // Google Drive에서 조회 URL 가져오기
+            Logger.debug(`[viewFile] fileName: ${uploadFile.fileName}, fileId: ${uploadFile.fileId}`);
+
+            let viewUrl: string;
+            if (uploadFile.fileId && await this.googleDriveService.fileExists(uploadFile.fileId, authUser.id)) {
                 viewUrl = await this.googleDriveService.getFileViewUrl(uploadFile.fileId, authUser.id);
             } else {
-                // 로컬 파일의 경우 (필요 시 로컬 URL 생성 로직 추가)
-                throw new HttpException('Local file viewing not supported yet', HttpStatus.NOT_IMPLEMENTED);
+                throw new HttpException('File not found in Google Drive', HttpStatus.NOT_FOUND);
             }
-    
-            // JSON 응답으로 viewUrl 반환
-            res.status(HttpStatus.OK).json({
-                fileId: uploadFile.fileId,
-                fileName: uploadFile.fileName,
-                viewUrl: viewUrl,
-            });
+
+            res.status(HttpStatus.OK).send(viewUrl);
         } catch (e) {
             Logger.error(`[viewFile] Failed to get view URL (fileName: ${uploadFile?.fileName}, fileId: ${uploadFile?.fileId}): ${e.message}`);
             throw new HttpException(

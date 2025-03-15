@@ -425,33 +425,33 @@ export class GoogleDriveService {
     }
   }
 
-    /**
-     * Gets a viewable URL for a Google Drive file.
-     * @param {string} fileId The ID of the file.
-     * @param {number} userId The ID of the user for permission checking.
-     * @returns {Promise<string>} A URL that can be used to view the file.
-     */
-    public async getFileViewUrl(fileId: string, userId: number): Promise<string> {
-        const authClient = await this.authorize();
-        const drive = google.drive({ version: 'v3', auth: authClient });
+  /**
+   * Gets a viewable URL for a Google Drive file.
+   * @param {string} fileId The ID of the file.
+   * @param {number} userId The ID of the user for permission checking.
+   * @returns {Promise<string>} A URL that can be used to view the file.
+   */
+  public async getFileViewUrl(fileId: string, userId: number): Promise<string> {
+    const authClient = await this.authorize();
+    const drive = google.drive({ version: 'v3', auth: authClient });
 
-        try {
+    try {
         // 파일 메타데이터 가져오기
         const fileMeta = await drive.files.get({
             fileId: fileId,
-            fields: 'id, name, mimeType, webViewLink, parents',
+            fields: 'id, name, mimeType, parents',
         });
 
         const fileName = fileMeta.data.name || 'unknown_file';
         const mimeType = fileMeta.data.mimeType || 'application/octet-stream';
-        const webViewLink = fileMeta.data.webViewLink;
 
-        if (!webViewLink) {
-            Logger.warn(`No webViewLink available for file ${fileId}`);
-            throw new Error(`File ${fileName} does not have a viewable URL`);
+        // 이미지 파일인지 확인
+        if (!mimeType.startsWith('image/')) {
+            Logger.warn(`File ${fileId} is not an image (mimeType: ${mimeType})`);
+            throw new Error(`File ${fileName} is not an image`);
         }
 
-        // 파일이 사용자의 폴더에 속하는지 확인 (선택적)
+        // 사용자 폴더 소속 여부 확인
         const folderId = await this.getOrCreateDuckDnsFolder(drive, userId);
         const parents = fileMeta.data.parents || [];
         if (!parents.includes(folderId)) {
@@ -459,16 +459,18 @@ export class GoogleDriveService {
             throw new Error(`File ${fileName} does not belong to the user's folder`);
         }
 
-        Logger.debug(`Generated view URL for file ${fileId}: ${webViewLink}`);
-        return webViewLink;
-        } catch (err) {
-            Logger.error(`[getFileViewUrl] Failed to get view URL for file ${fileId}: ${err.message}`);
-            throw new HttpException(
-                `Failed to get view URL: ${err.message}`,
-                err.status || HttpStatus.INTERNAL_SERVER_ERROR
-            );
-        }
+        // 이미지 미리보기 URL 생성
+        const viewUrl = `https://drive.google.com/uc?id=${fileId}`;
+        Logger.debug(`Generated view URL for file ${fileId}: ${viewUrl}`);
+        return viewUrl;
+    } catch (err) {
+        Logger.error(`[getFileViewUrl] Failed to get view URL for file ${fileId}: ${err.message}`);
+        throw new HttpException(
+            `Failed to get view URL: ${err.message}`,
+            err.status || HttpStatus.INTERNAL_SERVER_ERROR
+        );
     }
+  }
 
   /**
    * Checks if a file exists in Google Drive by its fileId.
