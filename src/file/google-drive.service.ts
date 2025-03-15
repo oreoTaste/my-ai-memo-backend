@@ -1,4 +1,4 @@
-import { forwardRef, HttpException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { OAuth2Client } from 'google-auth-library';
 import { drive_v3, google } from 'googleapis';
 import * as fs from 'fs/promises';
@@ -228,7 +228,7 @@ export class GoogleDriveService {
         Logger.debug(
           `Upload successful: ${uploadRes.data.name} (${uploadRes.data.id})`,
         );
-        uploadedFile.fileId = uploadRes.data.id;
+        uploadedFile.googleDriveFileId = uploadRes.data.id;
       } catch (err) {
         Logger.error(`Upload failed for ${uploadedFile.fileName}:`, err.message);
       }
@@ -425,51 +425,6 @@ export class GoogleDriveService {
     }
   }
 
-    /**
-     * Gets a viewable URL for a Google Drive file.
-     * @param {string} fileId The ID of the file.
-     * @param {number} userId The ID of the user for permission checking.
-     * @returns {Promise<string>} A URL that can be used to view the file.
-     */
-    public async getFileViewUrl(fileId: string, userId: number): Promise<string> {
-        const authClient = await this.authorize();
-        const drive = google.drive({ version: 'v3', auth: authClient });
-
-        try {
-        // 파일 메타데이터 가져오기
-        const fileMeta = await drive.files.get({
-            fileId: fileId,
-            fields: 'id, name, mimeType, webViewLink, parents',
-        });
-
-        const fileName = fileMeta.data.name || 'unknown_file';
-        const mimeType = fileMeta.data.mimeType || 'application/octet-stream';
-        const webViewLink = fileMeta.data.webViewLink;
-
-        if (!webViewLink) {
-            Logger.warn(`No webViewLink available for file ${fileId}`);
-            throw new Error(`File ${fileName} does not have a viewable URL`);
-        }
-
-        // 파일이 사용자의 폴더에 속하는지 확인 (선택적)
-        const folderId = await this.getOrCreateDuckDnsFolder(drive, userId);
-        const parents = fileMeta.data.parents || [];
-        if (!parents.includes(folderId)) {
-            Logger.error(`File ${fileId} is not in the user's folder (${folderId})`);
-            throw new Error(`File ${fileName} does not belong to the user's folder`);
-        }
-
-        Logger.debug(`Generated view URL for file ${fileId}: ${webViewLink}`);
-        return webViewLink;
-        } catch (err) {
-            Logger.error(`[getFileViewUrl] Failed to get view URL for file ${fileId}: ${err.message}`);
-            throw new HttpException(
-                `Failed to get view URL: ${err.message}`,
-                err.status || HttpStatus.INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
   /**
    * Checks if a file exists in Google Drive by its fileId.
    * @param {string} fileId The ID of the file to check.
@@ -535,7 +490,7 @@ export class GoogleDriveService {
             fields: 'id, name, mimeType, parents',
         });
 
-        const fileName = fileMeta.data.name || 'downloaded_file';
+        const fileName = this.fileService.getRealFileName(fileMeta.data.name) || 'downloaded_file';
         const mimeType = fileMeta.data.mimeType || 'application/octet-stream';
         const parents = fileMeta.data.parents || [];
 

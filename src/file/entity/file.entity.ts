@@ -1,7 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { CommonEntity } from "src/common/entity/common.entity";
-import { Memo } from "src/memo/entity/memo.entity";
-import { Column, Entity, ManyToOne, PrimaryColumn } from "typeorm";
+import { Column, Entity, PrimaryColumn } from "typeorm";
 
 @Entity({name: "Y_FILE"})
 export class UploadFile extends CommonEntity{
@@ -21,6 +20,6 @@ export class UploadFile extends CommonEntity{
 
     @Column({nullable: true, type: "varchar2", length: 50})
     @ApiProperty()
-    fileId: string;
+    googleDriveFileId: string;
 
 }

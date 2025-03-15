@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { DownloadFileDto, InsertFileDto, SearchFilesDto } from './dto/file.dto';
@@ -9,7 +9,6 @@ import { UploadFile } from './entity/file.entity';
 import * as fs from 'node:fs/promises';
 import { Response } from 'express';
 import { GoogleDriveService } from './google-drive.service';
-import { BatchController } from 'src/batch/bach.controller';
 
 @Injectable()
 export class FileService {
@@ -58,15 +57,15 @@ export class FileService {
 
 
             if(fileNameType !== null && fileNameType === 1) { // db상의 파일명
-                uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'fileId']});
+                uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'googleDriveFileId']});
             } else if(fileNameType !== null && fileNameType === 2) { //업로드/다운로드 파일명에서 uploads를 삭제한 파일명
-                uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'fileId']});
+                uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'googleDriveFileId']});
                 uploadFiles.forEach(el => {
                     el.fileName = this.getRealFileNameWithPrefix(el.fileName)
                 });
 
             } else { // 업로드/다운로드 파일명 (default)
-                uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'fileId']});
+                uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'googleDriveFileId']});
                 uploadFiles.forEach(el => {
                     el.fileName = this.getRealFileName(el.fileName)
                 });
@@ -103,7 +102,7 @@ export class FileService {
                                 fileName: file.fileName
                             },
                             {
-                                fileId: file.fileId
+                                googleDriveFileId: file.googleDriveFileId
                             }
                         );
                     } else {
@@ -123,7 +122,7 @@ export class FileService {
      * 1 : db상의 파일명
      * @returns 
      */
-    async searchFileNames(searchFilesDto: SearchFilesDto, fileNameType: number): Promise<{ fileName: string, fileId: string }[]> {
+    async searchFileNames(searchFilesDto: SearchFilesDto, fileNameType: number): Promise<{ fileName: string, googleDriveFileId: string }[]> {
         try {
             let searchMap = {};
             if(searchFilesDto.seq) {
@@ -136,16 +135,16 @@ export class FileService {
                 searchMap['fileName'] = searchFilesDto.fileName;
             }
 
-            let uploadFileNames: { fileName: string, fileId: string }[] = [];
-            let uploadedFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'fileId']});
+            let uploadFileNames: { fileName: string, googleDriveFileId: string }[] = [];
+            let uploadedFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'googleDriveFileId']});
 
             if(fileNameType !== null && fileNameType === 1) { // db상의 파일명
                 for(let uploadedFile of uploadedFiles) {
-                    uploadFileNames.push({fileName: uploadedFile.fileName, fileId: uploadedFile.fileId})
+                    uploadFileNames.push({fileName: uploadedFile.fileName, googleDriveFileId: uploadedFile.googleDriveFileId})
                 }
             } else {
                 for(let uploadedFile of uploadedFiles) {
-                    uploadFileNames.push({fileName: this.getRealFileName(uploadedFile.fileName), fileId: uploadedFile.fileId})
+                    uploadFileNames.push({fileName: this.getRealFileName(uploadedFile.fileName), googleDriveFileId: uploadedFile.googleDriveFileId})
                 }
             }
             return uploadFileNames;
@@ -207,7 +206,7 @@ export class FileService {
         newFile.fileFrom = file.fileFrom;
         newFile.insertId = newFile.updateId = loginId;
         newFile.seq = file.seq;
-        newFile.fileId = file.fileId;
+        newFile.googleDriveFileId = file.googleDriveFileId;
         return await this.fileRepository.save(newFile);
     }
 
@@ -222,7 +221,7 @@ export class FileService {
                 // 파일 이동 (임시 디렉터리 -> 실제 저장 디렉터리)
                 renameSync(uploadFile.path, targetPath);
 
-                let savedFile = await this.saveFile(insertId, {fileFrom, fileName: targetPath, fileId: null, seq: memoSeq});
+                let savedFile = await this.saveFile(insertId, {fileFrom, fileName: targetPath, googleDriveFileId: null, seq: memoSeq});
                 insertFiles.push(savedFile);
 
             }
@@ -270,13 +269,13 @@ export class FileService {
     
         try {
             // 파일 목록 조회
-            let files = await this.fileRepository.find({ where: searchMap, select: ['fileId', 'fileName', 'seq']});
+            let files = await this.fileRepository.find({ where: searchMap, select: ['googleDriveFileId', 'fileName', 'seq']});
     
             try {
                 // 구글 드라이브에서 삭제
-                let fileIds = files.map(el => el.fileId);
-                await this.googleDriverService.deleteFilesWithFileId(fileIds, insertId);
-                Logger.debug(`succeed to delete files remotely (filesIds:${fileIds.join(',')})`);
+                let googleDriveFileIds = files.map(el => el.googleDriveFileId);
+                await this.googleDriverService.deleteFilesWithFileId(googleDriveFileIds, insertId);
+                Logger.debug(`succeed to delete files remotely (filesIds:${googleDriveFileIds.join(',')})`);
             } catch(e) {
                 Logger.error(`[deleteFiles] failed to delete file remotely ${e}`);
             }
