@@ -7,12 +7,15 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { FileService } from 'src/file/file.service';
 import { AIAnalyzerService } from 'src/common/ai-analyzer.service';
 import { getAPIKeyResultDto } from 'src/common/dto/common.dto';
+import { BatchService } from 'src/batch/batch.service';
+import { BatchController } from 'src/batch/bach.controller';
+import { Memo } from './entity/memo.entity';
 
 @Controller('memo')
 export class MemoController {
     constructor(private readonly memoService: MemoService, 
                 private readonly fileService: FileService,
-                private readonly aiAnalyzer: AIAnalyzerService
+                private readonly aiAnalyzer: AIAnalyzerService,
             ){}
 
     @Get('list')
@@ -24,8 +27,8 @@ export class MemoController {
         let memos = await this.memoService.searchMemo(authUser.id, searchMemoDto);
 
         for (let memo of memos) {
-            let fileName = await this.fileService.searchFileNames({ fileFrom: "MEMO", seq: memo.seq }, 0);
-            memo['files'] = fileName || [];
+            let files = await this.fileService.searchFiles({ fileFrom: "MEMO", seq: memo.seq }, 0);
+            memo.files = files;
         }            
         return new SearchMemoResultDto(memos);    
     }
@@ -38,7 +41,7 @@ export class MemoController {
         if(!authUser) {
             return new InsertMemoResultDto(null, authUser.id, false, ['please login first']);
         }
-        const insertResult = await this.memoService.insertMemo(authUser.id, insertMemoDto);
+        const memo = await this.memoService.insertMemo(authUser.id, insertMemoDto);
         try {
             for(let file of files) {
                 if (!file.path) {
@@ -46,12 +49,12 @@ export class MemoController {
                     throw new Error('File is undefined.');
                 }
             }            
-            await this.fileService.insertFiles(authUser.id, files, "MEMO", insertResult.raw.seq);
+            memo.files = await this.fileService.insertFiles(authUser.id, files, "MEMO", memo.seq);
         } catch (error) {
             Logger.error('Error saving file:', error);
-            return new InsertMemoResultDto(insertResult.raw, authUser.id, false, ['failed to save file']);
+            return new InsertMemoResultDto(memo, authUser.id, false, ['failed to save file']);
         }
-        return new InsertMemoResultDto(insertResult.raw, authUser.id);    
+        return new InsertMemoResultDto(memo, authUser.id);    
     }
 
     @Post('update')
@@ -74,15 +77,17 @@ export class MemoController {
         }
         const memoToDelete = await this.memoService.searchMemo(authUser.id, { seq });
         if(memoToDelete.length == 1) {
-            try {
-                await this.fileService.deleteFiles("MEMO", seq, authUser.id);
-            } catch(e) {
-                Logger.error(`failed to delete files of memo#: ${seq}`);
-            }
-
-            // db에서 삭제
-            const deleteResult = await this.memoService.deleteMemo(seq);
+            // 노출하지 않도록 처리
+            const deleteResult = await this.memoService.deactivateMemo(seq);
             Logger.debug(`succeed to delete memo in db (${seq})`);
+
+            try {
+                this.deleteMemoAndFileFromGoogleDrive(memoToDelete[0]).catch((e) => {
+                    console.error(`비동기 구글 드라이브 삭제 실패: ${e}`);
+                });
+            } catch(e) {
+                Logger.debug(`[deleteMemo failed to delete memo in db (${seq})`);
+            }
 
             return new DeleteMemoResultDto(deleteResult);
         } else {
@@ -90,6 +95,17 @@ export class MemoController {
         }
     }
 
+    async deleteMemoAndFileFromGoogleDrive(memo: Memo): Promise<void> {
+        try {
+            await this.fileService.deleteFiles("MEMO", memo.seq, memo.insertId);
+            await this.memoService.deleteMemo(memo.seq);
+        } catch(e) {
+            Logger.error(`failed to delete files of memo#: ${memo.seq}`);
+        }
+        
+    }
+
+    
     @Post('get-api-key')
     async getAPIkey(@AuthUser() authUser: AuthUserDto): Promise<getAPIKeyResultDto> {
         if(!authUser) {

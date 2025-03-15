@@ -5,7 +5,6 @@ import { LoggerMiddleware } from './log/logger.middleware';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './user/entity/user.entity';
 import { ScheduleModule } from '@nestjs/schedule';
-import { TaskService } from './batch/task.service';
 import { ConfigModule } from '@nestjs/config';
 import { UserModule } from './user/user.module';
 import { UserController } from './user/user.controller';

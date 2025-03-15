@@ -3,6 +3,7 @@ import { Memo } from "../entity/memo.entity";
 import { CommonResultDto } from "src/common/dto/common.dto";
 import { IsOptional } from "class-validator";
 import { DeleteResult, InsertResult, UpdateResult } from "typeorm";
+import { UploadFile } from "src/file/entity/file.entity";
 
 export class SearchMemoDto extends PartialType(Memo){}
 export class InsertMemoDto extends OmitType(Memo, ['seq', "createdAt", "insertId", "updateId", "modifiedAt"] as const){}
@@ -20,15 +21,15 @@ export class SearchMemoResultDto extends CommonResultDto {
     memos?: Memo[];
 }
 export class InsertMemoResultDto extends CommonResultDto {
-    constructor(insertResult: InsertResult, insertId: number, result?: boolean, message?: string[]) {
+    constructor(memo: Memo, insertId: number, result?: boolean, message?: string[]) {
         super(result == undefined ? true : result
             , message == undefined ? ['success'] : message);
-        this.insertResult = insertResult ? insertResult : null;
+        this.memo = memo ? memo : null;
         this.insertId = insertId ? insertId : null;
         }
 
     @IsOptional()
-    insertResult?: InsertResult;
+    memo?: Memo;
 
     @IsOptional()
     insertId?: number;

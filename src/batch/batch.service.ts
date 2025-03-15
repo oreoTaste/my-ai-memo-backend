@@ -13,8 +13,8 @@ interface TodoWithUserInfo {
 }
 
 @Injectable()
-export class TaskService {
-  private readonly logger = new Logger(TaskService.name);
+export class BatchService {
+  private readonly logger = new Logger(BatchService.name);
   private telegramBotToken: string; // 필드로 유지하지만 초기화는 하지 않음
   private telegramApi: AxiosInstance;
 

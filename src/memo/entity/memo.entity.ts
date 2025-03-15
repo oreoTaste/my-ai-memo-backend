@@ -30,8 +30,12 @@ export class Memo extends CommonEntity{
     @ApiProperty()
     answer: string;
 
+    @Column({nullable: false, type: "varchar2", length: 1, default: "Y"})
+    @ApiProperty()
+    ynDisplay: string;
+
     // @OneToMany(() => UploadFile, uploadFile => uploadFile.seq, { eager: true })
     // @Column()
     // @ApiProperty()
-    // files: UploadFile[];
+    files: UploadFile[];
 }

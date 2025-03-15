@@ -13,6 +13,6 @@ import { GoogleDriveService } from './google-drive.service';
       ],
     providers: [FileService, GoogleDriveService],
     controllers: [FileController],
-    exports: [FileService]
+    exports: [FileService, GoogleDriveService]
   })
 export class FileModule {}

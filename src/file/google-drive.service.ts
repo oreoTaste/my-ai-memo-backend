@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { forwardRef, HttpException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { OAuth2Client } from 'google-auth-library';
 import { drive_v3, google } from 'googleapis';
 import * as fs from 'fs/promises';
@@ -10,6 +10,8 @@ import { Code } from 'src/code/entity/code.entity';
 import { Repository } from 'typeorm';
 import { Response } from 'express';
 import { Stream } from 'stream';
+import { UploadFile } from './entity/file.entity';
+import { FileService } from './file.service';
 
 @Injectable()
 export class GoogleDriveService {
@@ -27,7 +29,12 @@ export class GoogleDriveService {
   );
   constructor(
     @InjectRepository(Code) private codeRepository: Repository<Code>,
-  ) {}
+    @Inject(forwardRef(() => FileService)) private fileService: FileService,
+    // private readonly fileService: FileService,
+  ) {
+    console.log('CodeRepository:', codeRepository);
+    console.log('FileService:', fileService);
+  }
 
   /**
    * Reads previously authorized credentials from the save file.
@@ -39,7 +46,7 @@ export class GoogleDriveService {
       const credentials = JSON.parse(content);
       return google.auth.fromJSON(credentials) as OAuth2Client;
     } catch (err) {
-      console.error(err);
+      Logger.error(err);
       return null;
     }
   }
@@ -72,20 +79,20 @@ export class GoogleDriveService {
       if (client) {
         return client;
       }
-      console.log('before authenticate');
-      console.log('this.CREDENTIALS_PATH : ' + this.CREDENTIALS_PATH);
+      Logger.log('before authenticate');
+      Logger.log('this.CREDENTIALS_PATH : ' + this.CREDENTIALS_PATH);
 
       client = await authenticate({
         scopes: this.SCOPES,
         keyfilePath: this.CREDENTIALS_PATH,
       });
-      console.log('after authenticate');
+      Logger.log('after authenticate');
       if (client.credentials) {
         await this.saveCredentials(client);
       }
       return client;
     } catch (e) {
-      console.error(e);
+      Logger.error(e);
     }
   }
 
@@ -108,11 +115,11 @@ export class GoogleDriveService {
       ).remark;
       if (folderId) {
         await drive.files.get({ fileId: folderId, fields: 'id' });
-        console.log(`Using cached Folder ID: ${folderId}`);
+        Logger.log(`Using cached Folder ID: ${folderId}`);
         return folderId;
       }
     } catch (err) {
-      console.log('No valid cached folder ID found.');
+      Logger.log('No valid cached folder ID found.');
     }
 
     const res = await drive.files.list({
@@ -124,7 +131,7 @@ export class GoogleDriveService {
     let folderId: string;
     if (res.data.files?.length > 0) {
       folderId = res.data.files[0].id;
-      console.log(`Found existing Folder ID: ${folderId}`);
+      Logger.log(`Found existing Folder ID: ${folderId}`);
     } else {
       const folderMetadata = {
         name: 'duckdns',
@@ -136,7 +143,7 @@ export class GoogleDriveService {
         fields: 'id',
       });
       folderId = createRes.data.id;
-      console.log(`Created new Folder ID: ${folderId}`);
+      Logger.log(`Created new Folder ID: ${folderId}`);
     }
 
     try {
@@ -150,9 +157,83 @@ export class GoogleDriveService {
       } as Code;
       await this.codeRepository.save(newCode);
     } catch (e) {
-      console.log(`failed to save Folder ID: ${folderId}`);
+      Logger.log(`failed to save Folder ID: ${folderId}`);
     }
     return folderId;
+  }
+
+
+  /**
+   * Inserts files into Google Drive, replacing any existing files with the same names.
+   * @param {string | string[]} fileNames The name(s) of the file(s) to upload.
+   * @returns {Promise<void>}
+   */
+  public async uploadFiles(uploadedFiles: UploadFile[]): Promise<UploadFile[]> {
+    const authClient = await this.authorize();
+    const drive = google.drive({ version: 'v3', auth: authClient });
+
+    // 폴더 확인
+    const folderId = await this.getOrCreateDuckDnsFolder(drive, uploadedFiles[0].insertId);
+
+    for (let uploadedFile of uploadedFiles) {
+      let fileNameWithPrefiex = this.fileService.getRealFileNameWithPrefix(uploadedFile.fileName);
+      try {
+        const filePath = path.resolve(__dirname, "../../", uploadedFile.fileName); // __dirname은 현재 디렉토리 경로를 반환
+
+        // 1. 로컬 파일 존재유무 확인
+        const fileExists = await fs
+          .access(filePath)
+          .then(() => true)
+          .catch(() => false);
+        if (!fileExists) {
+          Logger.error(
+            `File ${uploadedFile.fileName} does not exist locally. Skipping.`,
+          );
+          return null;
+        }
+
+        // 2. 구글 DRIVE 파일 존재유무 확인
+        const res = await drive.files.list({
+          pageSize: 10,
+          q: `'${folderId}' in parents and name = '${fileNameWithPrefiex}'`,
+          fields: 'files(id, name)',
+        });
+
+        const existingFiles = res.data.files as drive_v3.Schema$File[];
+        if (existingFiles?.length > 0) {
+          for (const file of existingFiles) {
+            await drive.files.delete({ fileId: file.id || '' });
+            Logger.debug(`Deleted existing file: ${file.name} (${file.id})`);
+          }
+        } else {
+          Logger.debug(
+            `No existing file named "${fileNameWithPrefiex}" found in folder.`,
+          );
+        }
+
+        // 3. 파일 업로드
+        const fileMetadata = { name: fileNameWithPrefiex, parents: [folderId] };
+        const media = {
+          mimeType: mime.lookup(fileNameWithPrefiex)
+            ? mime.lookup(fileNameWithPrefiex).toString()
+            : 'application/octet-stream',
+          body: (await import('fs')).createReadStream(uploadedFile.fileName),
+        };
+
+        Logger.debug(`Starting upload of ${uploadedFile.fileName}`);
+        const uploadRes = await drive.files.create({
+          requestBody: fileMetadata,
+          media,
+        });
+        Logger.debug(
+          `Upload successful: ${uploadRes.data.name} (${uploadRes.data.id})`,
+        );
+        uploadedFile.fileId = uploadRes.data.id;
+      } catch (err) {
+        Logger.error(`Upload failed for ${uploadedFile.fileName}:`, err.message);
+      }
+    }
+    return uploadedFiles;
   }
 
   /**
@@ -160,17 +241,15 @@ export class GoogleDriveService {
    * @param {string | string[]} fileNames The name(s) of the file(s) to upload.
    * @returns {Promise<void>}
    */
-  public async insertFiles(
-    fileNames: { fullFileName: string; fileNameWithPrefiex: string }[],
-    insertId: number,
-  ): Promise<string[]> {
+  public async insertFiles(fileNames: { fullFileName: string; fileNameWithPrefiex: string }[], insertId: number)
+    : Promise<{ fullFileName: string, fileNameWithPrefiex: string, fileId: string }[]> {
     const authClient = await this.authorize();
     const drive = google.drive({ version: 'v3', auth: authClient });
 
     // 폴더 확인
     const folderId = await this.getOrCreateDuckDnsFolder(drive, insertId);
 
-    let fileIds = [];
+    let uploadedFiles : { fullFileName: string, fileNameWithPrefiex: string, fileId: string }[] = [];
 
     for (let { fullFileName, fileNameWithPrefiex } of fileNames) {
       try {
@@ -180,7 +259,7 @@ export class GoogleDriveService {
           .then(() => true)
           .catch(() => false);
         if (!fileExists) {
-          console.error(
+          Logger.error(
             `File ${fullFileName} does not exist locally. Skipping.`,
           );
           return null;
@@ -197,10 +276,10 @@ export class GoogleDriveService {
         if (existingFiles?.length > 0) {
           for (const file of existingFiles) {
             await drive.files.delete({ fileId: file.id || '' });
-            console.log(`Deleted existing file: ${file.name} (${file.id})`);
+            Logger.log(`Deleted existing file: ${file.name} (${file.id})`);
           }
         } else {
-          console.log(
+          Logger.log(
             `No existing file named "${fileNameWithPrefiex}" found in folder.`,
           );
         }
@@ -214,20 +293,20 @@ export class GoogleDriveService {
           body: (await import('fs')).createReadStream(fullFileName),
         };
 
-        console.debug(`Starting upload of ${fullFileName}`);
+        Logger.debug(`Starting upload of ${fullFileName}`);
         const uploadRes = await drive.files.create({
           requestBody: fileMetadata,
           media,
         });
-        console.debug(
+        Logger.debug(
           `Upload successful: ${uploadRes.data.name} (${uploadRes.data.id})`,
         );
-        fileIds.push(uploadRes.data.id);
+        uploadedFiles.push({ fullFileName, fileNameWithPrefiex, fileId: uploadRes.data.id });
       } catch (err) {
-        console.error(`Upload failed for ${fullFileName}:`, err.message);
+        Logger.error(`Upload failed for ${fullFileName}:`, err.message);
       }
     }
-    return fileIds;
+    return uploadedFiles;
   }
 
   /**
@@ -316,7 +395,7 @@ export class GoogleDriveService {
           .then(() => true)
           .catch(() => false);
         if (!fileExists) {
-          console.error(
+          Logger.error(
             `File ${fullFileName} does not exist locally. Skipping.`,
           );
           return null;
@@ -333,15 +412,15 @@ export class GoogleDriveService {
         if (existingFiles?.length > 0) {
           for (const file of existingFiles) {
             await drive.files.delete({ fileId: file.id || '' });
-            console.log(`Deleted existing file: ${file.name} (${file.id})`);
+            Logger.log(`Deleted existing file: ${file.name} (${file.id})`);
           }
         } else {
-          console.log(
+          Logger.log(
             `No existing file named "${fileNameWithPrefiex}" found in folder.`,
           );
         }
       } catch (err) {
-        console.error(`Upload failed for ${fileNameWithPrefiex}:`, err.message);
+        Logger.error(`Upload failed for ${fileNameWithPrefiex}:`, err.message);
       }
     }
   }

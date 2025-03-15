@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { DownloadFileDto, InsertFileDto, InsertFileResultDto, SearchFilesDto } from './dto/file.dto';
+import { DownloadFileDto, InsertFileDto, SearchFilesDto } from './dto/file.dto';
 import { join } from 'path';
 import * as path from 'path';
 import { renameSync } from 'fs';
@@ -9,13 +9,15 @@ import { UploadFile } from './entity/file.entity';
 import * as fs from 'node:fs/promises';
 import { Response } from 'express';
 import { GoogleDriveService } from './google-drive.service';
+import { BatchController } from 'src/batch/bach.controller';
 
 @Injectable()
 export class FileService {
 
     constructor(
         @InjectRepository(UploadFile) private fileRepository: Repository<UploadFile>,
-        private googleDriverService: GoogleDriveService
+        private readonly googleDriverService: GoogleDriveService,
+        // private readonly batchController: BatchController
     ){}
 
     public getRealFileName(savedFileName: string) {
@@ -32,6 +34,88 @@ export class FileService {
         return `uploads/${insertId}_${seq}_${fileName}`;
     }
     
+    /**
+     * @param searchFilesDto - 검색조건
+     * @param fileNameType - 파일명 추출조건\
+     * 0 : 업로드/다운로드 파일명 (default)\
+     * 1 : db상의 파일명
+     * 2 : 업로드/다운로드 파일명에서 uploads를 삭제한 파일명
+     * @returns 
+     */
+    async searchFiles(searchFilesDto: SearchFilesDto, fileNameType: number): Promise<UploadFile[]> {
+        let uploadFiles = [] as UploadFile[];
+        try {
+            let searchMap = {};
+            if(searchFilesDto.seq) {
+                searchMap['seq'] = searchFilesDto.seq;
+            }
+            if(searchFilesDto.fileFrom) {
+                searchMap['fileFrom'] = searchFilesDto.fileFrom;
+            }
+            if(searchFilesDto.fileName) {
+                searchMap['fileName'] = searchFilesDto.fileName;
+            }
+
+
+            if(fileNameType !== null && fileNameType === 1) { // db상의 파일명
+                uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'fileId']});
+            } else if(fileNameType !== null && fileNameType === 2) { //업로드/다운로드 파일명에서 uploads를 삭제한 파일명
+                uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'fileId']});
+                uploadFiles.forEach(el => {
+                    el.fileName = this.getRealFileNameWithPrefix(el.fileName)
+                });
+
+            } else { // 업로드/다운로드 파일명 (default)
+                uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'fileId']});
+                uploadFiles.forEach(el => {
+                    el.fileName = this.getRealFileName(el.fileName)
+                });
+            }
+            return uploadFiles;
+        } catch(error) {
+            return null;
+        }
+    }
+    
+    /** @description Updates fileId in the file table based on provided file data */
+    async updateFiles(updateFiles: UploadFile[]): Promise<void> {
+        try {
+            // 트랜잭션 시작 (여러 파일 업데이트를 원자적으로 처리하기 위해)
+            await this.fileRepository.manager.transaction(async (transactionalEntityManager) => {
+                // updateFiles 배열을 순회하면서 각 파일을 업데이트
+                for (const file of updateFiles) {
+                    // 복합 기본 키(fileFrom, seq, fileName)를 기준으로 기존 파일 찾기
+                    const existingFile = await transactionalEntityManager.findOne(UploadFile, {
+                        where: {
+                            fileFrom: file.fileFrom,
+                            seq: file.seq,
+                            fileName: file.fileName
+                        }
+                    });
+    
+                    if (existingFile) {
+                        // fileId만 업데이트
+                        await transactionalEntityManager.update(
+                            UploadFile,
+                            {
+                                fileFrom: file.fileFrom,
+                                seq: file.seq,
+                                fileName: file.fileName
+                            },
+                            {
+                                fileId: file.fileId
+                            }
+                        );
+                    } else {
+                        throw new Error(`File not found: ${file.fileName}`);
+                    }
+                }
+            });
+        } catch (error) {
+            throw new Error(`Failed to update files: ${error.message}`);
+        }
+    }
+
     /**
      * @param searchFilesDto - 검색조건
      * @param fileNameType - 파일명 추출조건\
@@ -117,45 +201,55 @@ export class FileService {
         }
     }
 
-    private async saveFile(loginId: number, file: InsertFileDto) {
+    public async saveFile(loginId: number, file: InsertFileDto):Promise<UploadFile> {
         let newFile = new UploadFile();
         newFile.fileName = file.fileName;
         newFile.fileFrom = file.fileFrom;
         newFile.insertId = newFile.updateId = loginId;
         newFile.seq = file.seq;
         newFile.fileId = file.fileId;
-        await this.fileRepository.save(newFile);
+        return await this.fileRepository.save(newFile);
     }
 
-    async insertFiles(insertId: number, uploadFiles: Array<Express.Multer.File>, fileFrom: string, memoSeq: number) : Promise<InsertFileResultDto>{
-        for(let uploadFile of uploadFiles) {
-            let googleDriveFileName = null;
+    async insertFiles(insertId: number, uploadFiles: Array<Express.Multer.File>, fileFrom: string, memoSeq: number) : Promise<UploadFile[]>{
+        let insertFiles = [] as UploadFile[]
+        try {
+            for(let uploadFile of uploadFiles) {
+                // 원하는 저장 경로 (예: ./uploads 디렉터리로 이동)
+                let fullFileName = this.getSaveFileName(insertId, memoSeq, uploadFile.filename);
+                const targetPath = join(fullFileName);
+    
+                // 파일 이동 (임시 디렉터리 -> 실제 저장 디렉터리)
+                renameSync(uploadFile.path, targetPath);
 
-            // 원하는 저장 경로 (예: ./uploads 디렉터리로 이동)
-            let fullFileName = this.getSaveFileName(insertId, memoSeq, uploadFile.filename);
-            let realFileName = this.getRealFileNameWithPrefix(fullFileName);
-            const targetPath = join(fullFileName);
+                let savedFile = await this.saveFile(insertId, {fileFrom, fileName: targetPath, fileId: null, seq: memoSeq});
+                insertFiles.push(savedFile);
 
-            // 파일 이동 (임시 디렉터리 -> 실제 저장 디렉터리)
-            renameSync(uploadFile.path, targetPath);
-
-            let googleFileId = "";
-            try {
-                // 구글 드라이브에 저장
-                googleFileId = (await this.googleDriverService.insertFiles([{fullFileName: targetPath, fileNameWithPrefiex: realFileName}], insertId))[0];
-                // 파일 삭제 (비동기적으로 처리)
-                // await fs.unlink(targetPath); // Promise 기반 unlink
-                // Logger.debug(`${targetPath} is deleted`);
-
-            } catch(e) {
-                console.error(`구글드라이브 저장 중 오류 ${e}`);
-
-            } finally{
-                // 파일 정보 등록
-                await this.saveFile(insertId, {fileFrom, fileName: targetPath, fileId: googleFileId, seq: memoSeq});
             }
+            
+            // 구글 드라이브에 저장 (비동기)
+            this.uploadToGoogleDrive(insertFiles).catch((e) => {
+                console.error(`비동기 구글 드라이브 업로드 실패: ${e}`);
+            });
+
+            return insertFiles;
+        } catch(e) {
+            return insertFiles;
         }
-        return new InsertFileResultDto(uploadFiles.length);
+    }
+    async uploadToGoogleDrive(files: UploadFile[]) {
+        try {
+            // 구글 드라이브에 저장
+            let googleFiles = await this.googleDriverService.uploadFiles(files);
+            // 파일 삭제 (비동기적으로 처리)
+            // await fs.unlink(targetPath); // Promise 기반 unlink
+            // Logger.debug(`${targetPath} is deleted`);
+
+            await this.updateFiles(googleFiles);
+
+        } catch (e) {
+            console.error(`구글 드라이브 저장 중 오류 ${e}`);
+        }
     }
 
     /**
