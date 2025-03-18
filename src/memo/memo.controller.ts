@@ -7,8 +7,6 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { FileService } from 'src/file/file.service';
 import { AIAnalyzerService } from 'src/common/ai-analyzer.service';
 import { getAPIKeyResultDto } from 'src/common/dto/common.dto';
-import { BatchService } from 'src/batch/batch.service';
-import { BatchController } from 'src/batch/bach.controller';
 import { Memo } from './entity/memo.entity';
 
 @Controller('memo')
@@ -20,7 +18,7 @@ export class MemoController {
 
     @Get('list')
     async searchMemo(@AuthUser() authUser: AuthUserDto,
-             @Query() searchMemoDto: SearchMemoDto) : Promise<SearchMemoResultDto>{
+                     @Query() searchMemoDto: SearchMemoDto) : Promise<SearchMemoResultDto>{
         if(!authUser) {
             return new SearchMemoResultDto(null, false, ['please login first']);
         }
@@ -97,8 +95,9 @@ export class MemoController {
 
     async deleteMemoAndFileFromGoogleDrive(memo: Memo): Promise<void> {
         try {
-            await this.fileService.deleteFiles("MEMO", memo.seq, memo.insertId);
-            await this.memoService.deleteMemo(memo.seq);
+            if(await this.fileService.deleteFiles("MEMO", memo.seq, memo.insertId)) {
+                await this.memoService.deleteMemo(memo.seq);
+            }
         } catch(e) {
             Logger.error(`failed to delete files of memo#: ${memo.seq}`);
         }

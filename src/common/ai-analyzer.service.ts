@@ -32,6 +32,8 @@ export class AIAnalyzerService {
   ) {
     this.sourceFilePath = this.configService.get<string>("SOURCE_FILE_PATH", "uploads");
     this.targetModel = this.configService.get<string>("TARGET_MODEL", "gemini-1.5-pro-002");
+    this.logger.debug(`sourceFilePath : ${this.sourceFilePath}`);
+    this.logger.debug(`targetModel : ${this.targetModel}`);
   }
 
   private fileToGenerativePart(fileName: string, mimeType: string) {

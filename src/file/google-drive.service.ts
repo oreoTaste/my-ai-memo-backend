@@ -327,7 +327,8 @@ export class GoogleDriveService {
     try {
       // 2. 파일 존재유무 확인 + 파일 삭제
       // 2-1. 모든 fileId에 대해 병렬로 정보 조회
-      const filePromises = fileIds.map((fileId) =>
+      const filePromises = fileIds.filter(el => el)
+                                  .map((fileId) =>
         drive.files
           .get({
             fileId,
@@ -336,7 +337,7 @@ export class GoogleDriveService {
           .catch((error) => {
             // 오류 발생 시 (예: 파일이 없거나 권한 문제) null 반환
             Logger.error(
-              `[deleteFilesWithFileId] Error fetching file ${fileId}:`,
+              `[deleteFilesWithFileId] Error fetching fileId: ${fileId}`,
               error.message,
             );
             return null;

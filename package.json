@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.1",
-    "@google/genai": "^0.3.1",
     "@google/generative-ai": "^0.22.0",
     "@nestjs/cache-manager": "^2.2.2",
     "@nestjs/common": "^10.0.0",

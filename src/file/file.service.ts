@@ -226,10 +226,12 @@ export class FileService {
 
             }
             
-            // 구글 드라이브에 저장 (비동기)
-            this.uploadToGoogleDrive(insertFiles).catch((e) => {
-                console.error(`비동기 구글 드라이브 업로드 실패: ${e}`);
-            });
+            if(uploadFiles.length) {
+                // 구글 드라이브에 저장 (비동기)
+                this.uploadToGoogleDrive(insertFiles).catch((e) => {
+                    console.error(`비동기 구글 드라이브 업로드 실패: ${e}`);
+                });
+            }
 
             return insertFiles;
         } catch(e) {
@@ -270,10 +272,14 @@ export class FileService {
         try {
             // 파일 목록 조회
             let files = await this.fileRepository.find({ where: searchMap, select: ['googleDriveFileId', 'fileName', 'seq']});
-    
+            
+            if(!files.length) {
+                return false;
+            }
+
             try {
                 // 구글 드라이브에서 삭제
-                let googleDriveFileIds = files.map(el => el.googleDriveFileId);
+                let googleDriveFileIds = files.map(el => el.googleDriveFileId).filter(el => el);
                 await this.googleDriverService.deleteFilesWithFileId(googleDriveFileIds, insertId);
                 Logger.debug(`succeed to delete files remotely (filesIds:${googleDriveFileIds.join(',')})`);
             } catch(e) {
@@ -293,8 +299,7 @@ export class FileService {
             }
             
             // DB에서 파일 레코드 삭제
-            let seqs = files.map(el => el.seq);
-            await this.fileRepository.delete( {seq: In(seqs)});
+            await this.fileRepository.delete({ seq: memoSeq });
             Logger.debug(`succeed to delete files in db (fileName:${files.map(el => el.fileName).join(',')})`);
             return true;
         } catch (err) {
