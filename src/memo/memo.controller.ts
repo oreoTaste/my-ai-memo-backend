@@ -22,13 +22,9 @@ export class MemoController {
         if(!authUser) {
             return new SearchMemoResultDto(null, false, ['please login first']);
         }
-        let memos = await this.memoService.searchMemo(authUser.id, searchMemoDto);
 
-        for (let memo of memos) {
-            let files = await this.fileService.searchFiles({ fileFrom: "MEMO", seq: memo.seq }, 0);
-            memo.files = files;
-        }            
-        return new SearchMemoResultDto(memos);    
+        let memos = await this.memoService.listMemoWithFiles(authUser.id);
+        return new SearchMemoResultDto(memos);
     }
 
     @Post('insert')
