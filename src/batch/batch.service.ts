@@ -69,12 +69,12 @@ export class BatchService {
 
     const queryBuilder = this.todoRepository
       .createQueryBuilder('todo')
-      .innerJoin('Y_USER', 'user', 'todo.insertId = user.id')
+      .innerJoin('Y_USER', 'user', 'todo.INSERT_ID = user.ID')
       .select('todo')
-      .addSelect('"user"."telegramId"', 'telegramId')
-      .addSelect('"user"."loginId"', 'loginId')
-      .where('todo.date = :todayString', { todayString })
-      .andWhere('"user"."telegramId" IS NOT NULL');;
+      .addSelect('"user".TELEGRAM_ID', 'TELEGRAM_ID')
+      .addSelect('"user".LOGIN_ID', 'LOGIN_ID')
+      .where('todo.YYYYMMDD = :todayString', { todayString })
+      .andWhere('"user".TELEGRAM_ID IS NOT NULL');;
 
     const rawResults = await queryBuilder.getRawAndEntities();
 
@@ -96,7 +96,7 @@ export class BatchService {
       return;
     }
 
-    const message = `[${todo.title}]\n${todo.desc}`;
+    const message = `[${todo.title}]\n${todo.description}`;
     try {
       const response = await this.telegramApi.post('/sendMessage', {
         chat_id: telegramId,

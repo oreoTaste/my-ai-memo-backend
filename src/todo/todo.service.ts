@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { And, Between, FindOperator, LessThan, MoreThan, MoreThanOrEqual, Repository } from 'typeorm';
+import { And, LessThan, MoreThanOrEqual, Repository } from 'typeorm';
 import { Todo } from './entity/todo.entity';
 import { DeleteTodoDto, DeleteTodoResultDto, InsertTodoDto, InsertTodoResultDto, SearchTodoDto, SearchTodoResultDto, UpdateTodoDto, UpdateTodoResultDto } from './dto/todo.dto';
 
@@ -23,10 +23,10 @@ export class TodoService {
       searchBody['insertId'] = loginId;
     }
     if(searchTodoDto.dateStart && searchTodoDto.dateEnd) {
-        searchBody['date'] = And(MoreThanOrEqual(searchTodoDto.dateStart), LessThan(searchTodoDto.dateEnd));
+        searchBody['yyyymmdd'] = And(MoreThanOrEqual(searchTodoDto.dateStart), LessThan(searchTodoDto.dateEnd));
     }
-    let rslt = await this.todoRepository.find({where: searchBody, order: {date: 'ASC'}});
-    rslt.map(el => {el.date = el.date.substring(0, 4) + "-" + el.date.substring(4, 6) + "-" + el.date.substring(6, 8)});
+    let rslt = await this.todoRepository.find({where: searchBody, order: {yyyymmdd: 'ASC'}});
+    rslt.map(el => {el.yyyymmdd = el.yyyymmdd.substring(0, 4) + "-" + el.yyyymmdd.substring(4, 6) + "-" + el.yyyymmdd.substring(6, 8)});
     console.log(rslt);
     return new SearchTodoResultDto(rslt);
   }
@@ -34,10 +34,10 @@ export class TodoService {
   /**
    * @description todo입력
    */
-  async insertTodos(loginId: number, {date, desc, title}: InsertTodoDto):Promise<InsertTodoResultDto> {
-    date = date.replaceAll(/[-]/g, "");
+  async insertTodos(loginId: number, {yyyymmdd, description, title}: InsertTodoDto):Promise<InsertTodoResultDto> {
+    yyyymmdd = yyyymmdd.replaceAll(/[-]/g, "");
     let rslt = await this.todoRepository.insert({
-      date, desc, title, insertId: loginId, updateId: loginId
+      yyyymmdd, description, title, insertId: loginId, updateId: loginId
     });
     return new InsertTodoResultDto(rslt);
   }
@@ -60,13 +60,13 @@ export class TodoService {
    */
   async updateTodoDto(loginId: number, updateTodoDto: UpdateTodoDto):Promise<UpdateTodoResultDto> {
     if(loginId) {
-      updateTodoDto.date = updateTodoDto.date.replaceAll(/[-]/g, "");
+      updateTodoDto.yyyymmdd = updateTodoDto.yyyymmdd.replaceAll(/[-]/g, "");
       let todo = await this.todoRepository.findOne({where: {seq : updateTodoDto.seq}});
       if(!todo) {
         return new UpdateTodoResultDto(null, false, ['failed to find the todo']);
       }
-      todo.date = updateTodoDto.date;
-      todo.desc = updateTodoDto.desc;
+      todo.yyyymmdd = updateTodoDto.yyyymmdd;
+      todo.description = updateTodoDto.description;
       todo.title = updateTodoDto.title;
       let rslt = await this.todoRepository.update({seq: updateTodoDto.seq}, todo);
       return new UpdateTodoResultDto(rslt);

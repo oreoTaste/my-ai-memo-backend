@@ -18,30 +18,30 @@ export class MemoService {
         .leftJoin(
             'UploadFile',
             'files',
-            'memo.seq = files.seq AND files.fileFrom = :fileFrom',
+            'memo.SEQ = files.SEQ AND files.FILE_FROM = :fileFrom',
             { fileFrom: 'MEMO' }
         )
         .select([
-            'memo.seq AS MEMO_SEQ',
-            'memo.raw AS MEMO_RAW',
-            'memo.subject AS MEMO_SUBJECT',
-            'memo.title AS MEMO_TITLE',
-            'memo.answer AS MEMO_ANSWER',
-            'memo.ynDisplay AS MEMO_YNDISPLAY',
-            'memo.insertId AS MEMO_INSERTID',
-            'memo.createdAt AS MEMO_CREATEDAT',
-            'memo.modifiedAt AS MEMO_MODIFIEDAT',
-            'memo.updateId AS MEMO_UPDATEID',
-            'files.fileFrom AS FILES_FILEFROM',
-            'files.seq AS FILES_SEQ',
-            'files.fileName AS FILES_FILENAME',
-            'files.googleDriveFileId AS FILES_GOOGLEDRIVEFILEID',
-            'files.createdAt AS FILES_CREATEDAT',
-            'files.modifiedAt AS FILES_MODIFIEDAT',
-            'files.insertId AS FILES_INSERTID',
-            'files.updateId AS FILES_UPDATEID',
+            'memo.SEQ AS MEMO_SEQ',
+            'memo.RAWS AS MEMO_RAWS',
+            'memo.SUBJECT AS MEMO_SUBJECT',
+            'memo.TITLE AS MEMO_TITLE',
+            'memo.ANSWER AS MEMO_ANSWER',
+            'memo.DISPLAY_YN AS MEMO_DISPLAYYN',
+            'memo.INSERT_ID AS MEMO_INSERTID',
+            'memo.CREATED_AT AS MEMO_CREATEDAT',
+            'memo.MODIFIED_AT AS MEMO_MODIFIEDAT',
+            'memo.UPDATE_ID AS MEMO_UPDATEID',
+            'files.FILE_FROM AS FILES_FILEFROM',
+            'files.SEQ AS FILES_SEQ',
+            'files.FILE_NAME AS FILES_FILENAME',
+            'files.GOOGLE_DRIVE_FILE_ID AS FILES_GOOGLEDRIVEFILEID',
+            'files.CREATED_AT AS FILES_CREATEDAT',
+            'files.MODIFIED_AT AS FILES_MODIFIEDAT',
+            'files.INSERT_ID AS FILES_INSERTID',
+            'files.UPDATE_ID AS FILES_UPDATEID',
         ])
-        .where('memo.insertId = :insertId', { insertId })
+        .where('memo.INSERT_ID = :insertId', { insertId })
         .getRawMany();
 
     const memoMap = new Map<number, Memo>();
@@ -52,11 +52,11 @@ export class MemoService {
         if (!memo) {
             memo = {
                 seq: row.MEMO_SEQ,
-                raw: row.MEMO_RAW,
+                raws: row.MEMO_RAWS,
                 subject: row.MEMO_SUBJECT,
                 title: row.MEMO_TITLE,
                 answer: row.MEMO_ANSWER,
-                ynDisplay: row.MEMO_YNDISPLAY,
+                displayYn: row.MEMO_DISPLAYYN,
                 insertId: row.MEMO_INSERTID,
                 createdAt: row.MEMO_CREATEDAT,
                 modifiedAt: row.MEMO_MODIFIEDAT,
@@ -90,8 +90,8 @@ export class MemoService {
     if (searchMemoDto.subject) {
       searchBody['subject'] = Like(`%${searchMemoDto.subject}%`);
     }
-    if (searchMemoDto.raw) {
-      searchBody['raw'] = Like(`%${searchMemoDto.raw}%`);
+    if (searchMemoDto.raws) {
+      searchBody['raws'] = Like(`%${searchMemoDto.raws}%`);
     }
     if (searchMemoDto.title) {
       searchBody['title'] = Like(`%${searchMemoDto.title}%`);
@@ -102,7 +102,7 @@ export class MemoService {
     if (searchMemoDto.seq) {
       searchBody['seq'] = searchMemoDto.seq;
     }
-    searchBody['ynDisplay'] = "Y";
+    searchBody['displayYn'] = "Y";
   
     return await this.memoRepository.find({where: searchBody});
   }
@@ -114,7 +114,7 @@ export class MemoService {
         subject: insertMemoDto.subject,
         answer: insertMemoDto.answer,
         title: insertMemoDto.title,
-        raw: insertMemoDto.raw
+        raws: insertMemoDto.raws
     });
   }
 
@@ -125,7 +125,7 @@ export class MemoService {
           subject: updateMemoDto.subject,
           answer: updateMemoDto.answer,
           title: updateMemoDto.title,
-          raw: updateMemoDto.raw
+          raws: updateMemoDto.raws
       });
   }
 
@@ -133,7 +133,7 @@ export class MemoService {
   async deactivateMemo(seq: number): Promise<UpdateResult> {
     return await this.memoRepository.update(
         { seq: seq },
-        { ynDisplay: 'N' }
+        { displayYn: 'N' }
     );
   }
 

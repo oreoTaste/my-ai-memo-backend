@@ -226,7 +226,7 @@ export class AIAnalyzerService {
     await this.updateStatusOfAPIKeys(usageMap);
   }
 
-  private async askFiles(title: string, raw: string, files: Array<Express.Multer.File>): Promise<{ subject: string; advice: string }> {
+  private async askFiles(title: string, raws: string, files: Array<Express.Multer.File>): Promise<{ subject: string; advice: string }> {
     const usageMap = new Map<string, number>();
     const selectedKeys = await this.getAPIKeys(1);
     const apiKey = selectedKeys[0].API_KEY;
@@ -261,7 +261,7 @@ export class AIAnalyzerService {
       - "advice": 본문 ${ ynFile ? "과 파일" : "" }에서 도출한 구체적인 조언 (자연스럽게).
       잘못된 JSON 형식이 되지 않도록 주의하고, JSON만 반환해줘 (추가 텍스트 없음).
       제목: "${title}"
-      본문: "${raw}"
+      본문: "${raws}"
       ${ynFile ? "" : "파일명 목록:"}
       ${files.map(f => f.originalname).join(", ")}
       예시:
@@ -274,7 +274,7 @@ export class AIAnalyzerService {
     try {
       const generatedContent = await model.generateContent([prompt, ...fileParts]);
       const jsonString = this.extractJSON(generatedContent.response.text());
-      this.logger.log(`Raw answer: ${jsonString}`);
+      this.logger.log(`Raws answer: ${jsonString}`);
   
       // JSON 파싱
       const parsedResult = JSON.parse(jsonString);
@@ -349,7 +349,7 @@ export class AIAnalyzerService {
           .createQueryBuilder()
           .update(Code)
           .set({
-            codeDesc: () => `TO_CHAR((TO_NUMBER(codeDesc) + ${count}))`
+            codeDesc: () => `TO_CHAR((TO_NUMBER(CODE_DESC) + ${count}))`
           })
           .where({
             codeGroup: "CC004",
@@ -372,9 +372,9 @@ export class AIAnalyzerService {
     this.logger.log("File analysis completed");
   }
 
-  public async getAdvice({raw, title}: GetMemoAdviceDto, files: Array<Express.Multer.File>): Promise<{ subject: string; advice: string }> {
+  public async getAdvice({raws, title}: GetMemoAdviceDto, files: Array<Express.Multer.File>): Promise<{ subject: string; advice: string }> {
     try {
-      let result = await this.askFiles(title, raw, files);
+      let result = await this.askFiles(title, raws, files);
       this.logger.log(`File analysis completed, 주제: ${result.subject}, 조언: ${result.advice}`);
       return result;  
     } catch(e) {

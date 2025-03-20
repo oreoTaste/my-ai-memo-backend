@@ -31,10 +31,7 @@ export class GoogleDriveService {
     @InjectRepository(Code) private codeRepository: Repository<Code>,
     @Inject(forwardRef(() => FileService)) private fileService: FileService,
     // private readonly fileService: FileService,
-  ) {
-    console.log('CodeRepository:', codeRepository);
-    console.log('FileService:', fileService);
-  }
+  ) {}
 
   /**
    * Reads previously authorized credentials from the save file.
@@ -79,18 +76,17 @@ export class GoogleDriveService {
       if (client) {
         return client;
       }
-      Logger.log('before authenticate');
-      Logger.log('this.CREDENTIALS_PATH : ' + this.CREDENTIALS_PATH);
 
       client = await authenticate({
         scopes: this.SCOPES,
         keyfilePath: this.CREDENTIALS_PATH,
       });
-      Logger.log('after authenticate');
+
       if (client.credentials) {
         await this.saveCredentials(client);
       }
       return client;
+
     } catch (e) {
       Logger.error(e);
     }

@@ -2,13 +2,12 @@ import { OmitType, PartialType, PickType } from "@nestjs/swagger";
 import { Memo } from "../entity/memo.entity";
 import { CommonResultDto } from "src/common/dto/common.dto";
 import { IsOptional } from "class-validator";
-import { DeleteResult, InsertResult, UpdateResult } from "typeorm";
-import { UploadFile } from "src/file/entity/file.entity";
+import { DeleteResult, UpdateResult } from "typeorm";
 
 export class SearchMemoDto extends PartialType(Memo){}
 export class InsertMemoDto extends OmitType(Memo, ['seq', "createdAt", "insertId", "updateId", "modifiedAt"] as const){}
 export class UpdateMemoDto extends OmitType(Memo, ["createdAt", "insertId", "updateId", "modifiedAt"] as const){}
-export class GetMemoAdviceDto extends PickType(Memo, ["raw", "title"] as const){}
+export class GetMemoAdviceDto extends PickType(Memo, ["raws", "title"] as const){}
 
 export class SearchMemoResultDto extends CommonResultDto {
     constructor(memos: Memo[], result?: boolean, message?: string[]) {

@@ -9,30 +9,30 @@ import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
 @Index("Y_MEMO_IDX2", ['insertId', 'title'], {unique: false})
 @Index("Y_MEMO_IDX3", ['createdAt'], {unique: false})
 export class Memo extends CommonEntity{
-    @PrimaryGeneratedColumn({zerofill: true, primaryKeyConstraintName: "Y_MEMO_PK"})
+    @PrimaryGeneratedColumn({zerofill: true, primaryKeyConstraintName: "Y_MEMO_PK", name: "SEQ"})
     @IsNumber()
     @ApiProperty()
     seq: number;
 
-    @Column({nullable: false, type: "varchar2", length: 4000})
+    @Column({nullable: false, type: "varchar2", length: 4000, name: "RAWS"})
     @ApiProperty()
-    raw: string;
+    raws: string;
 
-    @Column({nullable: true, type: "varchar2", length: 1000})
+    @Column({nullable: true, type: "varchar2", length: 1000, name: "SUBJECT"})
     @ApiProperty()
     subject: string;
 
-    @Column({nullable: false, type: "varchar2", length: 1000})
+    @Column({nullable: false, type: "varchar2", length: 1000, name: "TITLE"})
     @ApiProperty()
     title: string;
 
-    @Column({nullable: true, type: "varchar2", length: 4000})
+    @Column({nullable: true, type: "varchar2", length: 4000, name: "ANSWER"})
     @ApiProperty()
     answer: string;
 
-    @Column({nullable: false, type: "varchar2", length: 1, default: "Y"})
+    @Column({nullable: false, type: "varchar2", length: 1, default: "Y", name: "DISPLAY_YN"})
     @ApiProperty()
-    ynDisplay: string;
+    displayYn: string;
 
     // @OneToMany(() => UploadFile, uploadFile => uploadFile.seq, { eager: true })
     // @Column()

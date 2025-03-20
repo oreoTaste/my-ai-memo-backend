@@ -6,13 +6,13 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryColumn 
 @Index("Y_CODE_GROUP_IDX2", ['useYn', 'createdAt'], {unique: false})
 export class CodeGroup extends CommonEntity{
 
-    @PrimaryColumn({nullable: false, type: 'varchar2', length: 50, primaryKeyConstraintName: "Y_CODE_GROUP_PK"})
+    @PrimaryColumn({nullable: false, type: 'varchar2', length: 50, primaryKeyConstraintName: "Y_CODE_GROUP_PK", name: "CODE_GROUP"})
     codeGroup: string;
 
-    @Column({nullable: true, type: 'varchar2', length: 300})
+    @Column({nullable: true, type: 'varchar2', length: 300, name: "CODE_DESC"})
     codeDesc: string;
 
-    @Column({nullable: true, type: 'varchar2', length: 1, default: "Y"})
+    @Column({nullable: true, type: 'varchar2', length: 1, default: "Y", name: "USE_YN"})
     useYn: string;
 }
 
@@ -22,20 +22,20 @@ export class CodeGroup extends CommonEntity{
 export class Code extends CommonEntity{
 
     @ManyToOne(() => CodeGroup, { onDelete: "CASCADE" })
-    @JoinColumn({ name: "codeGroup" }) // 외래 키로 참조할 필드
-    @PrimaryColumn({nullable: false, type: 'varchar2', length: 50, primaryKeyConstraintName: "Y_CODE_PK"}) // 복합 키의 첫 번째 필드
+    @JoinColumn({ name: "CODE_GROUP" }) // 외래 키로 참조할 필드
+    @PrimaryColumn({nullable: false, type: 'varchar2', length: 50, primaryKeyConstraintName: "Y_CODE_PK", name: "CODE_GROUP"}) // 복합 키의 첫 번째 필드
     codeGroup: string;
 
 
-    @PrimaryColumn({nullable: false, type: 'varchar2', length: 50, primaryKeyConstraintName: "Y_CODE_PK"})
+    @PrimaryColumn({nullable: false, type: 'varchar2', length: 50, primaryKeyConstraintName: "Y_CODE_PK", name: "CODE"})
     code: string;
 
-    @Column({nullable: true, type: 'varchar2', length: 300})
+    @Column({nullable: true, type: 'varchar2', length: 300, name: "CODE_DESC"})
     codeDesc: string;
 
-    @Column({nullable: true, type: 'varchar2', length: 300})
+    @Column({nullable: true, type: 'varchar2', length: 300, name: "REMARK"})
     remark: string;
 
-    @Column({nullable: true, type: 'varchar2', length: 1, default: "Y"})
+    @Column({nullable: true, type: 'varchar2', length: 1, default: "Y", name: "USE_YN"})
     useYn: string;
 }

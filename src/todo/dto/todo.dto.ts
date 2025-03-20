@@ -29,7 +29,7 @@ export class InsertTodoResultDto extends CommonResultDto {
 }
 export class TodoDto extends Todo{
     @Length(10)
-    date: string;
+    yyyymmdd: string;
 }
 export class SearchTodoResultDto extends CommonResultDto {
     constructor(todo: TodoDto[], result?: boolean, message?: string[]) {
