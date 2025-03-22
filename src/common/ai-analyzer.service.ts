@@ -160,7 +160,8 @@ export class AIAnalyzerService {
     }
   }
 
-  private async analyzeFilesInBatch(batchSize: number = 5) {
+  private async analyzeFilesInBatch(batchSize: number = 8) {
+    this.dataList = [];
     if (!this.sourceFiles.length) {
       this.logger.warn("No files to analyze.");
       return;
@@ -188,14 +189,11 @@ export class AIAnalyzerService {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: this.targetModel });
 
-  //     const fileParts = batch.map(({ fileName, mimeType }) =>
-  //       this.fileToGenerativePart(fileName, mimeType)
-  //     );
-        const fileParts = await Promise.all(
-          batch.map(({ fileName, mimeType, googleDriveFileId }) =>
-            this.fileToGenerativePart(fileName, mimeType, googleDriveFileId)
-          )
-        );
+      const fileParts = await Promise.all(
+        batch.map(({ fileName, mimeType, googleDriveFileId }) =>
+          this.fileToGenerativePart(fileName, mimeType, googleDriveFileId)
+        )
+      );
 
       const prompt = `
         여러 파일을 분석하여 각 파일에서 뽑아낼 수 있는 속성을 JSON 형태로 반환해줘.
@@ -208,14 +206,14 @@ export class AIAnalyzerService {
           "image1.jpg": {"병원명": "여의도 성모 내과", "사업의종류": "광고, 홍보 도소매, 컴퓨터 소프트웨어", "동공간거리": "62"},
           "image2.pdf": {"병원명": "강남 안과", "사업의종류": "전자상거래, 소프트웨어 개발", "좌안-구면렌즈굴절력": "-6.25"}
         }
-        아래는 분석할 파일명 목록이야:
+        분석할 파일명 목록 (이외의 파일은 무시해):
         ${batch.map(f => this.fileService.getRealFileName(f.fileName)).join(", ")}
       `;
       
       try {
         const generatedContent = await model.generateContent([prompt, ...fileParts]);
         const jsonString = this.extractJSON(generatedContent.response.text());
-        this.logger.log("jsonString : " + jsonString);
+        this.logger.debug("jsonString : " + jsonString);
         const generatedJson = jsonString ? JSON.parse(jsonString) : {};
 
         for (const [fileName, attributes] of Object.entries(generatedJson)) {

@@ -80,7 +80,7 @@ export class MemoController {
                     console.error(`비동기 구글 드라이브 삭제 실패: ${e}`);
                 });
             } catch(e) {
-                Logger.debug(`[deleteMemo failed to delete memo in db (${seq})`);
+                Logger.debug(`[deleteMemo] failed to delete memo in db (${seq})`);
             }
 
             return new DeleteMemoResultDto(deleteResult);
@@ -91,9 +91,8 @@ export class MemoController {
 
     async deleteMemoAndFileFromGoogleDrive(memo: Memo): Promise<void> {
         try {
-            if(await this.fileService.deleteFiles("MEMO", memo.seq, memo.insertId)) {
-                await this.memoService.deleteMemo(memo.seq);
-            }
+            await this.fileService.deleteFiles("MEMO", memo.seq, memo.insertId);
+            await this.memoService.deleteMemo(memo.seq);
         } catch(e) {
             Logger.error(`failed to delete files of memo#: ${memo.seq}`);
         }
@@ -124,7 +123,8 @@ export class MemoController {
             return;
         }
 
-        let files = await this.fileService.searchFileNames({fileFrom: "MEMO", seq}, 1);
+        let files = await this.fileService.searchFiles({fileFrom: "MEMO", seq}, 1);
+        // let files = await this.fileService.searchFileNames({fileFrom: "MEMO", seq}, 1);
         this.aiAnalyzer.analyzeFiles(files, seq, authUser.id);    
     }
 
