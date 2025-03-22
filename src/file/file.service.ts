@@ -273,7 +273,7 @@ export class FileService {
             // 파일 목록 조회
             let files = await this.fileRepository.find({ where: searchMap, select: ['googleDriveFileId', 'fileName', 'seq']});
             
-            if(!files.length) {
+            if(!files || !files.length) {
                 return false;
             }
 

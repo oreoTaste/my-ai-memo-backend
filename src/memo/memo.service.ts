@@ -41,7 +41,7 @@ export class MemoService {
             'files.INSERT_ID AS FILES_INSERTID',
             'files.UPDATE_ID AS FILES_UPDATEID',
         ])
-        .where('memo.INSERT_ID = :insertId', { insertId })
+        .where('memo.INSERT_ID = :insertId AND memo.DISPLAY_YN = :displayYn', { insertId, displayYn: 'Y' })
         .getRawMany();
 
     const memoMap = new Map<number, Memo>();
