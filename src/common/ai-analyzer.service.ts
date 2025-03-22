@@ -11,6 +11,7 @@ import { Code } from "src/code/entity/code.entity";
 import { UploadFile } from "src/file/entity/file.entity";
 import { FileService } from "src/file/file.service";
 import { GetMemoAdviceDto } from "src/memo/dto/memo.dto";
+import { GoogleDriveService } from "src/file/google-drive.service";
 
 type DynamicData = { [key: string]: any };
 
@@ -18,7 +19,7 @@ type DynamicData = { [key: string]: any };
 export class AIAnalyzerService {
   private readonly logger = new Logger(AIAnalyzerService.name);
   private sourceFilePath: string;
-  private sourceFileNames: { fileName: string; mimeType: string }[] = []; // apiKeyToUse 제거
+  private sourceFiles: { fileName: string; mimeType: string; googleDriveFileId: string }[] = []; // apiKeyToUse 제거
   private fileExtensions: string[] = ["jpeg", "jpg", "png", "jfif", "gif", "webp", "pdf"];
   private targetModel: string;
   private dataList: DynamicData[] = [];
@@ -29,6 +30,7 @@ export class AIAnalyzerService {
     @InjectRepository(Code) private readonly codeRepository: Repository<Code>,
     @InjectRepository(UploadFile) private readonly fileRepository: Repository<UploadFile>,
     private readonly fileService: FileService,
+    private readonly googleDriveService: GoogleDriveService
   ) {
     this.sourceFilePath = this.configService.get<string>("SOURCE_FILE_PATH", "uploads");
     this.targetModel = this.configService.get<string>("TARGET_MODEL", "gemini-1.5-pro-002");
@@ -36,14 +38,27 @@ export class AIAnalyzerService {
     this.logger.debug(`targetModel : ${this.targetModel}`);
   }
 
-  private fileToGenerativePart(fileName: string, mimeType: string) {
-    if (!fs.existsSync(fileName)) {
-      throw new Error(`File not found: ${fileName}`);
+  private async fileToGenerativePart(fileName: string, mimeType: string, googleDriveFileId?: string) {
+    let fileData: Buffer;
+    let resolvedMimeType = mimeType || "image/jpeg";
+
+    if (googleDriveFileId) {
+      // Google Drive에서 파일 가져오기
+      const { data, mimeType: driveMimeType } = await this.googleDriveService.getGoogleDriveFile(googleDriveFileId);
+      fileData = data;
+      resolvedMimeType = driveMimeType;
+    } else {
+      // 로컬 파일 시스템에서 가져오기
+      if (!fs.existsSync(fileName)) {
+        throw new Error(`File not found: ${fileName}`);
+      }
+      fileData = fs.readFileSync(fileName);
     }
+
     return {
       inlineData: {
-        data: Buffer.from(fs.readFileSync(fileName)).toString("base64"),
-        mimeType: mimeType || "image/jpeg",
+        data: fileData.toString("base64"),
+        mimeType: resolvedMimeType,
       },
     };
   }
@@ -103,13 +118,14 @@ export class AIAnalyzerService {
     this.logger.log(`Excel file created: ${destFileName}`);
   }
 
-  private async processFiles(fileNames: { fileName: string }[]) {
+  private async processFiles(files: { fileName: string, googleDriveFileId: string }[]) {
     try {
-      const files: { fileName: string; mimeType: string }[] = [];
+      const returnFiles: { fileName: string; mimeType: string; googleDriveFileId: string }[] = [];
   
-      for (const fileMap of fileNames) {
+      for (const fileMap of files) {
         const fileName = fileMap.fileName;
-        if (!fileName) {
+        const googleDriveFileId = fileMap.googleDriveFileId;
+        if (!fileName && !googleDriveFileId) {
           this.logger.warn(`Skipping entry with no fileName in Map`);
           continue;
         }
@@ -123,9 +139,10 @@ export class AIAnalyzerService {
         );
   
         if (isValidFile) {
-          files.push({
+          returnFiles.push({
             fileName: fileName,
             mimeType: mime.lookup(fileName) || "image/jpeg",
+            googleDriveFileId: googleDriveFileId
           });
         } else {
           this.logger.warn(`Skipping non-valid file: ${fileName}`);
@@ -137,22 +154,22 @@ export class AIAnalyzerService {
         return;
       }
   
-      this.sourceFileNames = files; // API 키는 여기서 할당하지 않음
+      this.sourceFiles = returnFiles; // API 키는 여기서 할당하지 않음
     } catch (err) {
       this.logger.error(`Error processing fileNames: ${err.message}`, err.stack);
     }
   }
 
   private async analyzeFilesInBatch(batchSize: number = 5) {
-    if (!this.sourceFileNames.length) {
+    if (!this.sourceFiles.length) {
       this.logger.warn("No files to analyze.");
       return;
     }
 
     const usageMap = new Map<string, number>();
-    const batches: { fileName: string; mimeType: string }[][] = [];
-    for (let i = 0; i < this.sourceFileNames.length; i += batchSize) {
-      batches.push(this.sourceFileNames.slice(i, i + batchSize));
+    const batches: { fileName: string; mimeType: string; googleDriveFileId: string }[][] = [];
+    for (let i = 0; i < this.sourceFiles.length; i += batchSize) {
+      batches.push(this.sourceFiles.slice(i, i + batchSize));
     }
 
     // 필요한 API 호출 횟수 계산
@@ -171,9 +188,14 @@ export class AIAnalyzerService {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: this.targetModel });
 
-      const fileParts = batch.map(({ fileName, mimeType }) =>
-        this.fileToGenerativePart(fileName, mimeType)
-      );
+  //     const fileParts = batch.map(({ fileName, mimeType }) =>
+  //       this.fileToGenerativePart(fileName, mimeType)
+  //     );
+        const fileParts = await Promise.all(
+          batch.map(({ fileName, mimeType, googleDriveFileId }) =>
+            this.fileToGenerativePart(fileName, mimeType, googleDriveFileId)
+          )
+        );
 
       const prompt = `
         여러 파일을 분석하여 각 파일에서 뽑아낼 수 있는 속성을 JSON 형태로 반환해줘.
@@ -362,10 +384,10 @@ export class AIAnalyzerService {
     });
   }
 
-  public async analyzeFiles(fileNames: { fileName: string }[], seq: number, insertId: number, batchSize: number = 5) {
+  public async analyzeFiles(files: { fileName: string, googleDriveFileId: string }[], seq: number, insertId: number, batchSize: number = 5) {
     this.logger.log("Starting file analysis...");
-    await this.processFiles(fileNames);
-    this.logger.log(`Found ${this.sourceFileNames.length} files`);
+    await this.processFiles(files);
+    this.logger.log(`Found ${this.sourceFiles.length} files`);
     await this.analyzeFilesInBatch(batchSize);
     this.logger.log(`Analyzed ${this.dataList.length} files`);
     await this.makeFile(seq, insertId);

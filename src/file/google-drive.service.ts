@@ -12,6 +12,7 @@ import { Response } from 'express';
 import { Stream } from 'stream';
 import { UploadFile } from './entity/file.entity';
 import { FileService } from './file.service';
+import { Readable } from 'typeorm/platform/PlatformTools';
 
 @Injectable()
 export class GoogleDriveService {
@@ -542,4 +543,25 @@ export class GoogleDriveService {
         throw err;
         }
     }
+
+  // Google Drive에서 파일 데이터를 가져오는 헬퍼 메서드
+  public async getGoogleDriveFile(googleDriveFileId: string): Promise<{ data: Buffer; mimeType: string }> {
+    const authClient = await this.authorize();
+    const drive = google.drive({ version: 'v3', auth: authClient });
+    try {
+      const file = await drive.files.get(
+        { fileId: googleDriveFileId, alt: 'media', fields: 'mimeType' },
+        { responseType: 'stream' }
+      );
+      const mimeType = file.headers['content-type'];
+      const chunks: Buffer[] = [];
+      for await (const chunk of file.data as Readable) {
+        chunks.push(Buffer.from(chunk));
+      }
+      return { data: Buffer.concat(chunks), mimeType };
+    } catch (error) {
+      Logger.error(`Failed to fetch Google Drive file ${googleDriveFileId}: ${error.message}`);
+      throw new Error(`Unable to fetch Google Drive file: ${googleDriveFileId}`);
+    }
+  }
 }
