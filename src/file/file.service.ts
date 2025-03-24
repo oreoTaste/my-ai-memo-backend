@@ -228,9 +228,7 @@ export class FileService {
             
             if(uploadFiles.length) {
                 // 구글 드라이브에 저장 (비동기)
-                this.uploadToGoogleDrive(insertFiles).catch((e) => {
-                    console.error(`비동기 구글 드라이브 업로드 실패: ${e}`);
-                });
+                insertFiles = await this.uploadToGoogleDrive(insertFiles);
             }
 
             return insertFiles;
@@ -238,18 +236,25 @@ export class FileService {
             return insertFiles;
         }
     }
-    async uploadToGoogleDrive(files: UploadFile[]) {
+    async uploadToGoogleDrive(files: UploadFile[]): Promise<UploadFile[]> {
         try {
             // 구글 드라이브에 저장
             let googleFiles = await this.googleDriverService.uploadFiles(files);
+
             // 파일 삭제 (비동기적으로 처리)
+            googleFiles.forEach((el) => {
+                fs.unlink(el.fileName);
+                Logger.debug(`${el.fileName} is deleted locally`);
+            });
             // await fs.unlink(targetPath); // Promise 기반 unlink
             // Logger.debug(`${targetPath} is deleted`);
 
             await this.updateFiles(googleFiles);
+            return googleFiles;
 
         } catch (e) {
             console.error(`구글 드라이브 저장 중 오류 ${e}`);
+            return files;
         }
     }
 
