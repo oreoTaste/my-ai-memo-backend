@@ -89,7 +89,7 @@ export class AIAnalyzerService {
     }
   }
 
-  private async makeFile(seq: number, insertId: number) {
+  private async makeFile(seq: number, insertId: number): Promise<UploadFile>{
     let destFileName = `${this.sourceFilePath}/${insertId}_${seq}_output.xlsx`;
 
     this.dataList.forEach((data) => {
@@ -113,9 +113,10 @@ export class AIAnalyzerService {
     newFile.fileFrom = "MEMO";
     newFile.insertId = newFile.updateId = insertId;
     newFile.seq = seq;
-    await this.fileRepository.save(newFile);
+    let analyzedFile = await this.fileRepository.save(newFile);
 
     this.logger.log(`Excel file created: ${destFileName}`);
+    return analyzedFile;
   }
 
   private async processFiles(files: { fileName: string, googleDriveFileId: string }[]) {
@@ -388,7 +389,8 @@ export class AIAnalyzerService {
     this.logger.log(`Found ${this.sourceFiles.length} files`);
     await this.analyzeFilesInBatch(batchSize);
     this.logger.log(`Analyzed ${this.dataList.length} files`);
-    await this.makeFile(seq, insertId);
+    let analyzedFile = await this.makeFile(seq, insertId);
+    await this.fileService.uploadToGoogleDrive([analyzedFile]);
     this.logger.log("File analysis completed");
   }
 
