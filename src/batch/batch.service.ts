@@ -82,8 +82,8 @@ export class BatchService {
       const raw = rawResults.raw[index];
       return {
         todo,
-        telegramId: raw.telegramId,
-        loginId: raw.loginId,
+        telegramId: raw.TELEGRAM_ID,
+        loginId: raw.LOGIN_ID,
       };
     });
   }
