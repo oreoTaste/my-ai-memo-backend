@@ -1,6 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { MulterModule } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
 import { existsSync, mkdirSync } from 'fs';
 import { AIAnalyzerService } from './ai-analyzer.service';
 import { Code } from 'src/code/entity/code.entity';

@@ -32,6 +32,7 @@ export class MemoController {
     async insertMemo(@AuthUser() authUser: AuthUserDto,
                      @Body() insertMemoDto: InsertMemoDto,
                      @UploadedFiles() files: Array<Express.Multer.File>) : Promise<InsertMemoResultDto> {
+        console.log(files);
         if(!authUser) {
             return new InsertMemoResultDto(null, authUser.id, false, ['please login first']);
         }
