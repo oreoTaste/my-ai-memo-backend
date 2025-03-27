@@ -10,7 +10,7 @@ export class LoggerMiddleware implements NestMiddleware {
           ) {}
 
   async use(req: Request, res: Response, next: NextFunction) {
-    Logger.debug(`${req.protocol}://${req.hostname}:${this.configService.get<string>("PORT")}${req.url} (${req.method})`);
+    Logger.log(`[LoggerMiddleware] ${req.protocol}://${req.hostname}:${this.configService.get<string>("PORT")}${req.url} (${req.method})`);
     if(req.cookies?.nsessionId) {
       let userId = await this.cacheManager.get(req.cookies.nsessionId);
       req.cookies['userId'] = userId;

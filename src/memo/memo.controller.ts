@@ -32,21 +32,21 @@ export class MemoController {
     async insertMemo(@AuthUser() authUser: AuthUserDto,
                      @Body() insertMemoDto: InsertMemoDto,
                      @UploadedFiles() files: Array<Express.Multer.File>) : Promise<InsertMemoResultDto> {
-        console.log(files);
         if(!authUser) {
             return new InsertMemoResultDto(null, authUser.id, false, ['please login first']);
         }
+        console.log(files);
         const memo = await this.memoService.insertMemo(authUser.id, insertMemoDto);
         try {
             for(let file of files) {
                 if (!file.path) {
-                    Logger.error('File is undefined.');
+                    Logger.error('[insertMemo] File is undefined.');
                     throw new Error('File is undefined.');
                 }
             }            
             memo.files = await this.fileService.insertFiles(authUser.id, files, "MEMO", memo.seq);
         } catch (error) {
-            Logger.error('Error saving file:', error);
+            Logger.error('[insertMemo] Error saving file:', error);
             return new InsertMemoResultDto(memo, authUser.id, false, ['failed to save file']);
         }
         return new InsertMemoResultDto(memo, authUser.id);    
@@ -74,11 +74,11 @@ export class MemoController {
         if(memoToDelete.length == 1) {
             // 노출하지 않도록 처리
             const deleteResult = await this.memoService.deactivateMemo(seq);
-            Logger.debug(`succeed to delete memo in db (${seq})`);
+            Logger.debug(`[deleteMemo] succeed to delete memo in db (${seq})`);
 
             try {
                 this.deleteMemoAndFileFromGoogleDrive(memoToDelete[0]).catch((e) => {
-                    console.error(`비동기 구글 드라이브 삭제 실패: ${e}`);
+                    Logger.error(`[deleteMemo] 비동기 구글 드라이브 삭제 실패: ${e}`);
                 });
             } catch(e) {
                 Logger.debug(`[deleteMemo] failed to delete memo in db (${seq})`);
@@ -90,12 +90,13 @@ export class MemoController {
         }
     }
 
+    /* deleteMemo */
     async deleteMemoAndFileFromGoogleDrive(memo: Memo): Promise<void> {
         try {
             await this.fileService.deleteFiles("MEMO", memo.seq, memo.insertId);
             await this.memoService.deleteMemo(memo.seq);
         } catch(e) {
-            Logger.error(`failed to delete files of memo#: ${memo.seq}`);
+            Logger.error(`[deleteMemoAndFileFromGoogleDrive] failed to delete files of memo#: ${memo.seq}`);
         }
         
     }
@@ -124,8 +125,7 @@ export class MemoController {
             return;
         }
 
-        let files = await this.fileService.searchFiles({fileFrom: "MEMO", seq}, 1);
-        // let files = await this.fileService.searchFileNames({fileFrom: "MEMO", seq}, 1);
+        let files = await this.fileService.searchFiles({fileFrom: "MEMO", seq});
         this.aiAnalyzer.analyzeFiles(files, seq, authUser.id);    
     }
 

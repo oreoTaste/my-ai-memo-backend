@@ -13,6 +13,7 @@ import { Stream } from 'stream';
 import { UploadFile } from './entity/file.entity';
 import { FileService } from './file.service';
 import { Readable } from 'typeorm/platform/PlatformTools';
+import { CombinedUploadFile } from './dto/file.dto';
 
 @Injectable()
 export class GoogleDriveService {
@@ -98,6 +99,8 @@ export class GoogleDriveService {
    * @param {any} drive The Google Drive API client.
    * @returns {Promise<string>} The folder ID.
    */
+  /* insertMemo */
+  /* deleteMemo */
   private async getOrCreateDuckDnsFolder(
     drive: any,
     insertId: number,
@@ -165,56 +168,57 @@ export class GoogleDriveService {
    * @param {string | string[]} fileNames The name(s) of the file(s) to upload.
    * @returns {Promise<void>}
    */
-  public async uploadFiles(uploadedFiles: UploadFile[]): Promise<UploadFile[]> {
+  /* insertMemo */
+  public async uploadFiles(uploadedFiles: CombinedUploadFile[]): Promise<CombinedUploadFile[]> {
     const authClient = await this.authorize();
     const drive = google.drive({ version: 'v3', auth: authClient });
 
     // 폴더 확인
-    const folderId = await this.getOrCreateDuckDnsFolder(drive, uploadedFiles[0].insertId);
-
+    let folderId = await this.getOrCreateDuckDnsFolder(drive, uploadedFiles[0].insertId);
+    let parentFolderId = null as string;
     for (let uploadedFile of uploadedFiles) {
-      let fileNameWithPrefiex = this.fileService.getRealFileNameWithPrefix(uploadedFile.fileName);
       try {
-        const filePath = path.resolve(__dirname, "../../", uploadedFile.fileName); // __dirname은 현재 디렉토리 경로를 반환
+        const fullFilePath = path.resolve(__dirname, "../../uploads/", `${uploadedFile.seq}/${uploadedFile.filename}`); // __dirname은 현재 디렉토리 경로를 반환
+        console.log('filePath : ' + fullFilePath);
 
         // 1. 로컬 파일 존재유무 확인
         const fileExists = await fs
-          .access(filePath)
+          .access(fullFilePath)
           .then(() => true)
           .catch(() => false);
         if (!fileExists) {
           Logger.error(
-            `File ${uploadedFile.fileName} does not exist locally. Skipping.`,
+            `File ${uploadedFile.filename} does not exist locally. Skipping.`,
           );
           return null;
         }
 
-        // 2. 구글 DRIVE 파일 존재유무 확인
-        const res = await drive.files.list({
-          pageSize: 10,
-          q: `'${folderId}' in parents and name = '${fileNameWithPrefiex}'`,
-          fields: 'files(id, name)',
-        });
-
-        const existingFiles = res.data.files as drive_v3.Schema$File[];
-        if (existingFiles?.length > 0) {
-          for (const file of existingFiles) {
-            await drive.files.delete({ fileId: file.id || '' });
-            Logger.debug(`Deleted existing file: ${file.name} (${file.id})`);
-          }
-        } else {
-          Logger.debug(
-            `No existing file named "${fileNameWithPrefiex}" found in folder.`,
+        // 2. seq 기반 하위 폴더 생성
+        if(!parentFolderId) {
+          parentFolderId = await this.getSubFolder(drive, folderId, uploadedFile.seq);
+        }
+        
+        // 3. 기존 파일 확인 및 삭제
+        const existingFiles = await this.getExistingFiles(drive, parentFolderId, uploadedFile.filename);
+        if (existingFiles.length > 0) {
+          await Promise.all(
+            existingFiles.map((file) =>
+              drive.files.delete({ fileId: file.id || '' }).then(() =>
+                Logger.debug(`Deleted existing file: ${file.name} (${file.id})`),
+              ),
+            ),
           );
+        } else {
+          Logger.debug(`No existing file named "${uploadedFile.filename}" found in folder.`);
         }
 
         // 3. 파일 업로드
-        const fileMetadata = { name: fileNameWithPrefiex, parents: [folderId] };
+        const fileMetadata = { name: uploadedFile.filename, parents: [parentFolderId] };
         const media = {
-          mimeType: mime.lookup(fileNameWithPrefiex)
-            ? mime.lookup(fileNameWithPrefiex).toString()
+          mimeType: mime.lookup(uploadedFile.filename)
+            ? mime.lookup(uploadedFile.filename).toString()
             : 'application/octet-stream',
-          body: (await import('fs')).createReadStream(uploadedFile.fileName),
+          body: (await import('fs')).createReadStream(fullFilePath),
         };
 
         Logger.debug(`Starting upload of ${uploadedFile.fileName}`);
@@ -227,10 +231,56 @@ export class GoogleDriveService {
         );
         uploadedFile.googleDriveFileId = uploadRes.data.id;
       } catch (err) {
-        Logger.error(`Upload failed for ${uploadedFile.fileName}:`, err.message);
+        Logger.error(`Upload failed for ${uploadedFile.filename}:`, err.message);
       }
     }
     return uploadedFiles;
+  }
+
+  /* insertMemo */
+  private async getSubFolder(drive: drive_v3.Drive, parentFolderId: string, seq?: number): Promise<string> {
+    if (!seq) {
+      return parentFolderId;
+    }
+
+    const folderName = String(seq);
+    const query = `'${parentFolderId}' in parents and name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+
+    try {
+      const existingFolders = await drive.files.list({
+        q: query,
+        fields: 'files(id)',
+      });
+
+      const existingFolder = existingFolders.data.files?.[0];
+      if (existingFolder && existingFolder.id) {
+        return existingFolder.id; // 이미 존재하는 폴더의 ID 반환
+      }
+    } catch (error) {
+      console.error(`Error checking existing folder: ${error.message}`);
+      // 오류 발생 시 새 폴더를 생성하도록 진행
+    }
+
+    // 기존 폴더가 없으면 새로 생성
+    const folderMetadata = {
+      name: folderName,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentFolderId],
+    };
+
+    const resp = await drive.files.create({ requestBody: folderMetadata });
+    return resp.data.id!;
+  }
+
+
+  /* insertMemo */
+  private async getExistingFiles(drive: drive_v3.Drive, folderId: string, fileName: string): Promise<drive_v3.Schema$File[]> {
+    const res = await drive.files.list({
+      pageSize: 10,
+      q: `'${folderId}' in parents and name = '${fileName}'`,
+      fields: 'files(id, name)',
+    });
+    return (res.data.files as drive_v3.Schema$File[]) || [];
   }
 
   /**
@@ -312,34 +362,30 @@ export class GoogleDriveService {
    * @returns {Promise<void>}
    * @description: 폴더 내 파일 존재 유무 확인 후, 파일 삭제
    */
-  public async deleteFilesWithFileId(
-    fileIds: string[],
-    insertId: number,
-  ): Promise<void> {
+  /* deleteMemo */
+  public async deleteFilesWithFileId(fileIds: string[], insertId: number): Promise<void> {
     const authClient = await this.authorize();
     const drive = google.drive({ version: 'v3', auth: authClient });
 
-    // 1. 폴더 확인
-    const folderId = await this.getOrCreateDuckDnsFolder(drive, insertId);
     try {
-      // 2. 파일 존재유무 확인 + 파일 삭제
-      // 2-1. 모든 fileId에 대해 병렬로 정보 조회
-      const filePromises = fileIds.filter(el => el)
-                                  .map((fileId) =>
-        drive.files
-          .get({
-            fileId,
-            fields: 'id, name, parents', // 부모 폴더 정보 포함
-          })
-          .catch((error) => {
-            // 오류 발생 시 (예: 파일이 없거나 권한 문제) null 반환
-            Logger.error(
-              `[deleteFilesWithFileId] Error fetching fileId: ${fileId}`,
-              error.message,
-            );
-            return null;
-          }),
-      );
+      // 1. 파일 존재유무 확인 + 파일 삭제
+      // 1-1. 모든 fileId에 대해 병렬로 정보 조회
+      const filePromises = fileIds
+        .map((fileId) =>
+          drive.files
+            .get({
+              fileId,
+              fields: 'id, name, parents', // 부모 폴더 정보 포함
+            })
+            .catch((error) => {
+              // 오류 발생 시 (예: 파일이 없거나 권한 문제) null 반환
+              Logger.error(
+                `[deleteFilesWithFileId] Error fetching fileId: ${fileId}`,
+                error.message,
+              );
+              return null;
+            }),
+        );
 
       // 2-2. 모든 요청 완료 대기
       const fileResponses = await Promise.all(filePromises);
@@ -347,28 +393,27 @@ export class GoogleDriveService {
       // 2-3. 유효한 파일만 필터링하고 folderId 확인
       const matchedFiles = fileResponses
         .filter((file) => file !== null) // 오류로 null인 경우 제외
-        .filter(
-          (file) => file.data.parents && file.data.parents.includes(folderId),
-        ) // folderId가 부모에 포함된 경우
         .map((file) => ({
           id: file.data.id,
           name: file.data.name,
+          parents: file.data.parents
         }));
-
-      // 3. 구글 드라이브 파일 삭제
-      if (matchedFiles?.length > 0) {
-        for (const file of matchedFiles) {
-          await drive.files.delete({ fileId: file.id || '' });
-          Logger.debug(
-            `succeed to delete files remotely: ${file.name} (${file.id})`,
-          );
+        
+      // 3. 구글 드라이브 파일 삭제 (사실상 파일들이 존재하는 폴더 삭제)
+      let parentFolderIds = [...new Set(matchedFiles.flatMap(el => el.parents))];
+            
+      if (parentFolderIds.length > 0) {
+        for(const parentFolderId of parentFolderIds) {
+          await drive.files.delete({ fileId: parentFolderId || '' });
         }
+        Logger.debug(`[deleteFilesWithFileId] succeed to delete files remotely: (${matchedFiles.map(el => el.name).join(',')})`);  
       } else {
-        Logger.debug(`failed to delete files remotely (${fileIds.join(',')})`);
+        // 사실상 이때까지는 파일이 존재해야 함
+        Logger.error(`[deleteFilesWithFileId] couldn't find any files remotely (${fileIds.join(',')})`);
       }
     } catch (err) {
       Logger.error(
-        `[deleteFilesWithFileId] Error while deleting files remotely (${fileIds.join(',')})`,
+        `[deleteFilesWithFileId] Error while deleting files remotely (${fileIds.join(',')}) : ${err}`,
       );
     }
   }
@@ -428,121 +473,97 @@ export class GoogleDriveService {
    * @param {string} fileId The ID of the file to check.
    * @returns {Promise<boolean>} True if the file exists, false otherwise.
    */
-    public async fileExists(fileId: string, insertId: number): Promise<boolean> {
-        const authClient = await this.authorize();
-        const drive = google.drive({ version: 'v3', auth: authClient });
+  public async fileExists({googleDriveFileId}: UploadFile, insertId: number): Promise<boolean> {
+    const authClient = await this.authorize();
+    const drive = google.drive({ version: 'v3', auth: authClient });
 
-        try {
-        // 파일 메타데이터를 가져와 존재 여부 확인
-        const response = await drive.files.get({
-            fileId: fileId,
-            fields: 'id, name, parents', // 최소한의 필드만 요청
-        });
+    try {
+      // 파일 메타데이터를 가져와 존재 여부 확인
+      const response = await drive.files.get({
+          fileId: googleDriveFileId,
+          fields: 'id, name, parents', // 최소한의 필드만 요청
+      });
 
-        // 체크1. 응답에 id가 없으면
-        if (!response.data.id) {
-            Logger.error(`[fileExists] File with ID ${fileId} exists in Google Drive`);
-            return false;
-        }
+      // 응답에 id가 없으면
+      // -> 파일이 없음
+      if (!response.data.id) {
+          Logger.error(`[fileExists] File with ID ${googleDriveFileId} exists in Google Drive`);
+          return false;
+      }
 
-        const folderId = await this.getOrCreateDuckDnsFolder(drive, insertId);
-        // 체크2. 찾은 파일이 관리되는 폴더 소속이 아니면
-        if (!response.data.parents.includes(folderId)) {
-            Logger.error(`[fileExists] File ${fileId} is not in the duckdns folder (${folderId}).`);
-            return false;
-        }
+      return true;
+    } catch (err) {
+      // 404 Not Found면 파일이 없음
+      if (err.code === 404) {
+          Logger.error(`[fileExists] File with ID ${googleDriveFileId} not found in Google Drive`);
+          return false;
+      }
 
-        return true;
-        } catch (err) {
-            // 404 Not Found면 파일이 없음
-            if (err.code === 404) {
-                Logger.error(`[fileExists] File with ID ${fileId} not found in Google Drive`);
-                return false;
-            }
-
-            // 기타 오류는 로깅 후 예외 전파
-            Logger.error(`[fileExists] Failed to check file ${fileId}: ${err.message}`);
-            return false;
-        }
+      // 기타 오류는 로깅 후 예외 전파
+      Logger.error(`[fileExists] Failed to check file ${googleDriveFileId}: ${err.message}`);
+      return false;
     }
+  }
 
-    /**
-     * Downloads a file from Google Drive and streams it to the client.
-     * @param {string} fileId The ID of the file to download from Google Drive.
-     * @param {Response} res The Express response object to stream the file.
-     * @param {number} insertId The ID used to fetch or create the duckdns folder.
-     * @returns {Promise<void>}
-     */
-    public async downloadFile(
-        fileId: string,
-        res: Response,
-        insertId: number,
-    ): Promise<void> {
-        const authClient = await this.authorize();
-        const drive = google.drive({ version: 'v3', auth: authClient });
+  /**
+   * Downloads a file from Google Drive and streams it to the client.
+   * @param {string} fileId The ID of the file to download from Google Drive.
+   * @param {Response} res The Express response object to stream the file.
+   * @param {number} insertId The ID used to fetch or create the duckdns folder.
+   * @returns {Promise<void>}
+   */
+  public async downloadFile(
+      fileId: string,
+      res: Response,
+      insertId: number,
+  ): Promise<void> {
+    const authClient = await this.authorize();
+    const drive = google.drive({ version: 'v3', auth: authClient });
 
-        try {
-        const folderId = await this.getOrCreateDuckDnsFolder(drive, insertId);
-        const fileMeta = await drive.files.get({
-            fileId: fileId,
-            fields: 'id, name, mimeType, parents',
-        });
+    try {
+      const fileMeta = await drive.files.get({
+          fileId: fileId,
+          fields: 'id, name, mimeType, parents',
+      });
 
-        const fileName = this.fileService.getRealFileName(fileMeta.data.name) || 'downloaded_file';
-        const mimeType = fileMeta.data.mimeType || 'application/octet-stream';
-        const parents = fileMeta.data.parents || [];
+      const fileName = fileMeta.data.name || 'downloaded_file';
+      const mimeType = fileMeta.data.mimeType || 'application/octet-stream';
+      const parents = fileMeta.data.parents || [];
 
-        if (!parents.includes(folderId)) {
-            Logger.error(
-            `File ${fileId} is not in the duckdns folder (${folderId}).`,
-            );
-            throw new Error(
-            `File ${fileName} does not belong to the duckdns folder.`,
-            );
-        }
+      const fileStream = await drive.files.get(
+          { fileId: fileId, alt: 'media' },
+          { responseType: 'stream' },
+      );
 
-        const fileStream = await drive.files.get(
-            { fileId: fileId, alt: 'media' },
-            { responseType: 'stream' },
-        );
+      // 5. Response 헤더 설정 (RFC 5987 인코딩)
+      const encodedFileName = encodeURIComponent(fileName)
+          .replace(/'/g, '%27')
+          .replace(/"/g, '%22');
+      res.setHeader(
+          'Content-Disposition',
+          `attachment; filename*=UTF-8''${encodedFileName}`,
+      );
+      res.setHeader('Content-Type', mimeType);
 
-        // 5. Response 헤더 설정 (RFC 5987 인코딩)
-        const encodedFileName = encodeURIComponent(fileName)
-            .replace(/'/g, '%27')
-            .replace(/"/g, '%22');
-        res.setHeader(
-            'Content-Disposition',
-            `attachment; filename*=UTF-8''${encodedFileName}`,
-        );
-        res.setHeader('Content-Type', mimeType);
+      const passThrough = new Stream.PassThrough();
+      fileStream.data.pipe(passThrough).pipe(res);
 
-        const passThrough = new Stream.PassThrough();
-        fileStream.data.pipe(passThrough).pipe(res);
-
-        return new Promise((resolve, reject) => {
-            passThrough
-            .on('end', () => {
-                Logger.debug(
-                `Successfully downloaded file: ${fileName} (${fileId})`,
-                );
-                resolve(undefined);
-            })
-            .on('error', (err) => {
-                Logger.error(`Error streaming file ${fileId}: ${err.message}`);
-                reject(
-                new Error(
-                    `Error downloading file from Google Drive: ${err.message}`,
-                ),
-                );
-            });
-        });
-        } catch (err) {
-        Logger.error(
-            `[downloadFileFromGoogleDrive] Failed to download file ${fileId}: ${err.message}`,
-        );
-        throw err;
-        }
+      return new Promise((resolve, reject) => {
+          passThrough
+          .on('end', () => {
+              Logger.debug(`Successfully downloaded file: ${fileName} (${fileId})`);
+              resolve(undefined);
+          })
+          .on('error', (err) => {
+              Logger.error(`Error streaming file ${fileId}: ${err.message}`);
+              reject(new Error(`Error downloading file from Google Drive: ${err.message}`));
+          });
+      });
+    } catch (err) {
+      Logger.error(`[downloadFileFromGoogleDrive] Failed to download file ${fileId}: ${err.message}`);
+      throw err;
     }
+  }
 
   // Google Drive에서 파일 데이터를 가져오는 헬퍼 메서드
   public async getGoogleDriveFile(googleDriveFileId: string): Promise<{ data: Buffer; mimeType: string }> {

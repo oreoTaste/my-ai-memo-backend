@@ -26,9 +26,9 @@ export class FileController {
         let uploadFile: UploadFile = null;
         let existGoogleDriveYn = true; // 구글드라이브 존재여부
         try {
-            uploadFile = await this.fileService.getSavedFileName(authUser.id, downloadFileDto);
+            uploadFile = await this.fileService.getFileInfo(authUser.id, downloadFileDto);
             if (!uploadFile) {
-                throw new HttpException('File not found', HttpStatus.NOT_FOUND);
+                throw new HttpException('[downloadFile] File not found', HttpStatus.NOT_FOUND);
             }
 
             Logger.debug(`[downloadFile] fileName: ${uploadFile?.fileName}, fileId: ${uploadFile?.googleDriveFileId}`);
@@ -37,13 +37,14 @@ export class FileController {
                 existGoogleDriveYn = false;
             }
             if(existGoogleDriveYn) { // 체크2. 구글 드라이브에 파일id가 있는지 확인
-                existGoogleDriveYn = await this.googleDriveService.fileExists(uploadFile.googleDriveFileId, authUser.id);
+                existGoogleDriveYn = await this.googleDriveService.fileExists(uploadFile, authUser.id);
             }
             
             if(existGoogleDriveYn) {
                 await this.googleDriveService.downloadFile(uploadFile.googleDriveFileId, res, authUser.id);
             } else {
-                await this.fileService.downloadFile(uploadFile.fileName, res);
+                // throw new Error("구글드라이브에 파일이 없음")
+                await this.fileService.downloadFile(uploadFile.seq , uploadFile.fileName, res);
             }
 
             // 스트림 완료를 기다리기 위해 Promise 반환 (GoogleDriveService에서 제공)

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Memo } from './entity/memo.entity';
 import { Like, Repository, UpdateResult } from 'typeorm';
@@ -12,6 +12,7 @@ export class MemoService {
       private readonly fileService: FileService
   ){}
 
+  /* searchMemo */
   async listMemoWithFiles(insertId: number): Promise<Memo[]> {
     const rawData = await this.memoRepository
         .createQueryBuilder('memo')
@@ -70,7 +71,7 @@ export class MemoService {
             memo.files.push({
                 fileFrom: row.FILES_FILEFROM,
                 seq: row.FILES_SEQ,
-                fileName: this.fileService.getRealFileName(row.FILES_FILENAME),
+                fileName: row.FILES_FILENAME,
                 googleDriveFileId: row.FILES_GOOGLEDRIVEFILEID || null,
                 createdAt: row.FILES_CREATEDAT || null,
                 modifiedAt: row.FILES_MODIFIEDAT || null,
@@ -81,10 +82,11 @@ export class MemoService {
     });
 
     const result = Array.from(memoMap.values());
-    console.log("Mapped result:", JSON.stringify(result, null, 2));
+    Logger.debug(`[listMemoWithFiles] Mapped result: ${JSON.stringify(result[0], null, 2)} ...생략`);
     return result;
   }
 
+  /* deleteMemo */
   async searchMemo(insertId: number, searchMemoDto: SearchMemoDto): Promise<Memo[]> {
     const searchBody: any = { insertId };
     if (searchMemoDto.subject) {
@@ -107,6 +109,7 @@ export class MemoService {
     return await this.memoRepository.find({where: searchBody});
   }
 
+  /* insertMemo */
   async insertMemo(insertId: number, insertMemoDto: InsertMemoDto): Promise<Memo> {
     return await this.memoRepository.save({
         insertId,
@@ -118,6 +121,7 @@ export class MemoService {
     });
   }
 
+  /* updateMemo */
   async updateMemo(insertId: number, updateMemoDto: UpdateMemoDto): Promise<UpdateResult> {
       return await this.memoRepository.update(updateMemoDto.seq, {
           updateId: insertId,
@@ -130,6 +134,7 @@ export class MemoService {
   }
 
   /** @description Updates ynUse to 'N' for a memo with the given seq */
+  /* deleteMemo */
   async deactivateMemo(seq: number): Promise<UpdateResult> {
     return await this.memoRepository.update(
         { seq: seq },
@@ -138,6 +143,7 @@ export class MemoService {
   }
 
   /** @description remove a memo with the given seq */
+  /* deleteMemo */
   async deleteMemo(seq: number): Promise<boolean> {
     try {
       await this.memoRepository.delete({seq});

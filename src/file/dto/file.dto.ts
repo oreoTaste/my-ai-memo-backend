@@ -9,6 +9,8 @@ export class InsertFileDto extends OmitType(UploadFile, ["createdAt", "insertId"
 export class UpdateFileDto extends PickType(UploadFile, ["seq", "fileName"] as const){}
 export class DeleteFileDto extends PickType(UploadFile, ["fileFrom", "seq"] as const){}
 
+export interface CombinedUploadFile extends UploadFile, Express.Multer.File{}
+
 export class InsertFileResultDto extends CommonResultDto {
     constructor(resultCount: number, result?: boolean, message?: string[]) {
         super(result == undefined ? true : result
