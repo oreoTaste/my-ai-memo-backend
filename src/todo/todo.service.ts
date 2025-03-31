@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { And, LessThan, MoreThanOrEqual, Repository } from 'typeorm';
 import { Todo } from './entity/todo.entity';
@@ -25,9 +25,9 @@ export class TodoService {
     if(searchTodoDto.dateStart && searchTodoDto.dateEnd) {
         searchBody['yyyymmdd'] = And(MoreThanOrEqual(searchTodoDto.dateStart), LessThan(searchTodoDto.dateEnd));
     }
-    let rslt = await this.todoRepository.find({where: searchBody, order: {yyyymmdd: 'ASC'}});
+    let rslt = await this.todoRepository.find({where: searchBody, order: {yyyymmdd: 'ASC'}, comment: "TodoService.searchTodos"});
     rslt.map(el => {el.yyyymmdd = el.yyyymmdd.substring(0, 4) + "-" + el.yyyymmdd.substring(4, 6) + "-" + el.yyyymmdd.substring(6, 8)});
-    console.log(rslt);
+    Logger.debug(rslt);
     return new SearchTodoResultDto(rslt);
   }
 
@@ -46,7 +46,7 @@ export class TodoService {
    */
   async deleteTodos(loginId: number, {seq}: DeleteTodoDto):Promise<DeleteTodoResultDto> {
     if(loginId) {
-      let todo = await this.todoRepository.findOne({where: {seq}});
+      let todo = await this.todoRepository.findOne({where: {seq}, comment: "TodoService.deleteTodos"});
       if(!todo) {
         return new DeleteTodoResultDto(null, false, ['failed to find the todo']);
       }
@@ -61,7 +61,7 @@ export class TodoService {
   async updateTodoDto(loginId: number, updateTodoDto: UpdateTodoDto):Promise<UpdateTodoResultDto> {
     if(loginId) {
       updateTodoDto.yyyymmdd = updateTodoDto.yyyymmdd.replaceAll(/[-]/g, "");
-      let todo = await this.todoRepository.findOne({where: {seq : updateTodoDto.seq}});
+      let todo = await this.todoRepository.findOne({where: {seq : updateTodoDto.seq}, comment: "TodoService.updateTodoDto"});
       if(!todo) {
         return new UpdateTodoResultDto(null, false, ['failed to find the todo']);
       }

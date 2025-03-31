@@ -28,10 +28,11 @@ export class FileController {
         try {
             uploadFile = await this.fileService.getFileInfo(authUser.id, downloadFileDto);
             if (!uploadFile) {
-                throw new HttpException('[downloadFile] File not found', HttpStatus.NOT_FOUND);
+                throw new HttpException('File not found', HttpStatus.NOT_FOUND);
             }
 
-            Logger.debug(`[downloadFile] fileName: ${uploadFile?.fileName}, fileId: ${uploadFile?.googleDriveFileId}`);
+            console.log(uploadFile);
+            Logger.debug(`[downloadFile] seq: ${String(uploadFile?.seq)},fileName: ${uploadFile?.fileName}, fileId: ${uploadFile?.googleDriveFileId}`);
 
             if(!uploadFile.googleDriveFileId) { // 체크1. db내 파일id가 있는지 확인
                 existGoogleDriveYn = false;

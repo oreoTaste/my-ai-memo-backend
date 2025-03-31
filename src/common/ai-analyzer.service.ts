@@ -93,7 +93,6 @@ export class AIAnalyzerService {
   
       try {
         JSON.parse(jsonString);
-        this.logger.log(`Fixed JSON: ${jsonString}`);
         return jsonString;
       } catch (fixError) {
         this.logger.error(`Failed to fix JSON: ${fixError.message}`);
@@ -101,49 +100,6 @@ export class AIAnalyzerService {
       }
     }
   }
-
-  /* analyze */
-  // private async makeFile(seq: number, insertId: number): Promise<CombinedUploadFile>{
-  //   let fileDir = `${this.sourceFilePath}/${seq}`;
-  //   let filename = `output.xlsx`;
-  //   let analyzedFile: CombinedUploadFile;
-
-  //   if(!fs.existsSync){
-  //     fs.mkdirSync(fileDir);
-  //   }
-  //   let fullFilePath = `${fileDir}/${filename}`
-
-  //   this.dataList.forEach((data) => {
-  //     Object.keys(data).forEach((key) => this.allKeys.add(key));
-  //   });
-
-  //   const headers: string[] = Array.from(this.allKeys).sort();
-  //   const tableData: { [key: string]: string }[] = this.dataList.map((data) => {
-  //     const row: { [key: string]: string } = {};
-  //     headers.forEach((header) => {
-  //       row[header] = String(data[header] ?? "");
-  //     });
-  //     return row;
-  //   });
-  //   const worksheet = XLSX.utils.json_to_sheet(tableData, { header: headers });
-  //   const workbook = XLSX.utils.book_new();
-  //   XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
-  //   XLSX.writeFile(workbook, fullFilePath);
-
-  //   // 엑셀파일 추출
-  //   analyzedFile = fs.readFileSync(fullFilePath);
-
-  //   // db에 저장
-  //   analyzedFile.insertId = analyzedFile.updateId = insertId;
-  //   analyzedFile.fileFrom = "MEMO";
-  //   analyzedFile.fileName = filename;
-  //   analyzedFile.googleDriveFileId = null;
-  //   analyzedFile.seq = seq;
-  //   await this.fileRepository.save(analyzedFile);
-
-  //   this.logger.log(`Excel file created: ${fullFilePath}`);
-  //   return analyzedFile;
-  // }
 
   private async makeFile(seq: number, insertId: number): Promise<CombinedUploadFile> {
     const fileDir = `${this.sourceFilePath}/${seq}`;
@@ -187,26 +143,26 @@ export class AIAnalyzerService {
       mimetype: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       size: excelBuffer.length,
       buffer: excelBuffer,
-  
+
       // Express.Multer.File 선택적 속성 (디스크 저장소 관련)
       stream: undefined,
       destination: fileDir,
       filename: filename,
       path: fullFilePath,
-  
+
       // UploadFile 속성
-      fileFrom: "MEMO",
       seq: seq,
       fileName: filename,
       googleDriveFileId: null,
-  
+
       // 추가 속성
       insertId: insertId,
       updateId: insertId,
-  
+
       // CommonEntity에서 상속된 속성
       createdAt: new Date(),
       modifiedAt: new Date(),
+      memo: undefined
     };
   
     // DB에 저장
@@ -328,7 +284,7 @@ export class AIAnalyzerService {
       위 형식을 정확히 준수하며, JSON 파싱 오류가 발생하지 않도록 결과를 작성해줘.
       `;
       
-      console.log(prompt);
+      Logger.debug(prompt);
       try {
         const generatedContent = await model.generateContent([prompt, ...fileParts]);
         const jsonString = this.extractJSON(generatedContent.response.text());
@@ -404,7 +360,7 @@ export class AIAnalyzerService {
         "advice": "가나소프트는 소프트웨어 개발 업종, 마커스코리아는 전자상거래와 광고 업종에 속합니다."
       }
     `;
-    console.log(prompt);
+    Logger.debug(prompt);
   
     try {
       const generatedContent = await model.generateContent([prompt, ...fileParts]);
@@ -449,6 +405,7 @@ export class AIAnalyzerService {
     const apiKeys = await this.codeRepository.find({
       where: { codeGroup: "CC004", code: Like("API_KEY%"), useYn: "Y" },
       order: { code: "ASC" },
+      comment: "AIAnalyzerService.getAPIKeys"
     });
 
     if (apiKeys.length === 0) {
@@ -496,6 +453,7 @@ export class AIAnalyzerService {
             remark: apiKey,
             useYn: "Y"
           })
+          .comment("AIAnalyzerService.updateStatusOfAPIKeys")
           .execute();
       }
     });

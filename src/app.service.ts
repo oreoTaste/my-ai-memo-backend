@@ -1,7 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { User } from './user/entity/user.entity';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class AppService /*implements OnModuleInit */{

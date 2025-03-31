@@ -2,7 +2,7 @@ import { ApiProperty } from "@nestjs/swagger";
 import { IsNumber } from "class-validator";
 import { CommonEntity } from "src/common/entity/common.entity";
 import { UploadFile } from "src/file/entity/file.entity";
-import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, Index, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity({name: "Y_MEMO"})
 @Index("Y_MEMO_IDX1", ['insertId', 'subject'], {unique: false})
@@ -34,7 +34,7 @@ export class Memo extends CommonEntity{
     @ApiProperty()
     displayYn: string;
 
-    // @OneToMany(() => UploadFile, uploadFile => uploadFile.seq, { eager: true })
+    @OneToMany(() => UploadFile, uploadFile => uploadFile.memo, { eager: true })
     // @Column()
     @ApiProperty({ type: () => UploadFile, isArray: true })
     files: UploadFile[];

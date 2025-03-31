@@ -44,7 +44,7 @@ export class MemoController {
                     throw new Error('File is undefined.');
                 }
             }            
-            memo.files = await this.fileService.insertFiles(authUser.id, files, "MEMO", memo.seq);
+            memo.files = await this.fileService.insertFiles(authUser.id, files, memo.seq);
         } catch (error) {
             Logger.error('[insertMemo] Error saving file:', error);
             return new InsertMemoResultDto(memo, authUser.id, false, ['failed to save file']);
@@ -93,7 +93,7 @@ export class MemoController {
     /* deleteMemo */
     async deleteMemoAndFileFromGoogleDrive(memo: Memo): Promise<void> {
         try {
-            await this.fileService.deleteFiles("MEMO", memo.seq, memo.insertId);
+            await this.fileService.deleteFiles(memo.seq, memo.insertId);
             await this.memoService.deleteMemo(memo.seq);
         } catch(e) {
             Logger.error(`[deleteMemoAndFileFromGoogleDrive] failed to delete files of memo#: ${memo.seq}`);
@@ -125,7 +125,7 @@ export class MemoController {
             return;
         }
 
-        let files = await this.fileService.searchFiles({fileFrom: "MEMO", seq});
+        let files = await this.fileService.searchFiles({seq});
         this.aiAnalyzer.analyzeFiles(files, seq, authUser.id);    
     }
 

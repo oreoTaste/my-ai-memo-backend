@@ -37,14 +37,11 @@ export class FileService {
             if(searchFilesDto.seq) {
                 searchMap['seq'] = searchFilesDto.seq;
             }
-            if(searchFilesDto.fileFrom) {
-                searchMap['fileFrom'] = searchFilesDto.fileFrom;
-            }
             if(searchFilesDto.fileName) {
                 searchMap['fileName'] = searchFilesDto.fileName;
             }
 
-            uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'googleDriveFileId']});
+            uploadFiles = await this.fileRepository.find({where: searchMap, select: ['fileName', 'googleDriveFileId'], comment: "FileService.searchFiles"});
             return uploadFiles;
         } catch(error) {
             return null;
@@ -59,13 +56,13 @@ export class FileService {
             await this.fileRepository.manager.transaction(async (transactionalEntityManager) => {
                 // updateFiles 배열을 순회하면서 각 파일을 업데이트
                 for (const file of updateFiles) {
-                    // 복합 기본 키(fileFrom, seq, fileName)를 기준으로 기존 파일 찾기
+                    // 복합 기본 키(seq, fileName)를 기준으로 기존 파일 찾기
                     const existingFile = await transactionalEntityManager.findOne(UploadFile, {
                         where: {
-                            fileFrom: file.fileFrom,
                             seq: file.seq,
                             fileName: file.fileName
-                        }
+                        },
+                        comment: "FileService.updateGoogleDriveFileId"
                     });
     
                     if (existingFile) {
@@ -73,7 +70,6 @@ export class FileService {
                         await transactionalEntityManager.update(
                             UploadFile,
                             {
-                                fileFrom: file.fileFrom,
                                 seq: file.seq,
                                 fileName: file.fileName
                             },
@@ -92,11 +88,9 @@ export class FileService {
     }
 
     /* downloadFile */
-    async getFileInfo(insertId: string | number, downloadFilesDto: DownloadFileDto): Promise<UploadFile> {
+    async getFileInfo(insertId: string | number, {fileName, seq, googleDriveFileId}: DownloadFileDto): Promise<UploadFile> {
         try {
-            // fileName이 필요없을 것으로 판단됨
-            // downloadFilesDto.fileName = this.getSaveFileName(insertId, downloadFilesDto.seq, downloadFilesDto.fileName);
-            return await this.fileRepository.findOne({where: downloadFilesDto});
+            return await this.fileRepository.findOne({where: {fileName, seq, googleDriveFileId}, comment: "FileService.getFileInfo"});
         } catch(error) {
             return null;
         }
@@ -105,8 +99,8 @@ export class FileService {
     /* downloadFile */
     async downloadFile(seq: number, filename: string, res: Response) {
         // 파일 경로를 안전하게 생성 (fileName은 이미 uploads/로 시작하므로 split할 필요 없음)
-        const fullFilePath = path.resolve(__dirname, "../../", `${seq}/${filename}`); // __dirname은 현재 디렉토리 경로를 반환
-        console.log(fullFilePath);
+        const fullFilePath = path.resolve(__dirname, "../../", `${String(seq)}/${filename}`); // __dirname은 현재 디렉토리 경로를 반환
+        Logger.debug(fullFilePath);
     
         try {
             // 파일이 존재하는지 비동기적으로 확인
@@ -143,7 +137,6 @@ export class FileService {
     public async saveFile(loginId: number, file: InsertFileDto):Promise<UploadFile> {
         let newFile = new UploadFile();
         newFile.fileName = file.fileName;
-        newFile.fileFrom = file.fileFrom;
         newFile.insertId = newFile.updateId = loginId;
         newFile.seq = file.seq;
         newFile.googleDriveFileId = file.googleDriveFileId;
@@ -151,12 +144,12 @@ export class FileService {
     }
 
     /* insertMemo */
-    async insertFiles(insertId: number, uploadFiles: Array<Express.Multer.File>, fileFrom: string, memoSeq: number) : Promise<UploadFile[]>{
+    async insertFiles(insertId: number, uploadFiles: Array<Express.Multer.File>, memoSeq: number) : Promise<UploadFile[]>{
         let insertFiles = [] as CombinedUploadFile[]
         try {
             for(let uploadFile of uploadFiles) {
                 // 원하는 저장 경로 (예: ./uploads 디렉터리로 이동)
-                let fileDir = `uploads/${memoSeq}`;
+                let fileDir = `uploads/${String(memoSeq)}`;
                 let fullfilePath = `${fileDir}/${uploadFile.filename}`;
                 const targetPath = join(fullfilePath);
     
@@ -168,8 +161,12 @@ export class FileService {
                 renameSync(uploadFile.path, targetPath);
                 uploadFile.path = targetPath;
 
-                let savedFile = await this.saveFile(insertId, {fileFrom, fileName: uploadFile.filename, googleDriveFileId: null, seq: memoSeq});
-                insertFiles.push({...savedFile, ...uploadFile});
+                let savedFile = await this.saveFile(insertId, {
+                    fileName: uploadFile.filename, googleDriveFileId: null, seq: memoSeq,
+                    memo: undefined
+                });
+                insertFiles.push({...savedFile, fileName: uploadFile.filename, googleDriveFileId: null, seq: memoSeq, ...uploadFile});
+                Logger.debug(insertFiles);
 
             }
             
@@ -192,8 +189,8 @@ export class FileService {
             let googleFiles = await this.googleDriverService.uploadFiles(files);
 
             // 파일 삭제 (비동기적으로 처리)
-            googleFiles.forEach((uploadedFile) => {
-                const fileDir = path.resolve(__dirname, "../../uploads/", `${uploadedFile.seq}`); // seq 기반 폴더 경로
+            [...new Set(googleFiles.flatMap(el => el.seq))].forEach((seq) => {
+                const fileDir = path.resolve(__dirname, "../../uploads/", `${String(seq)}`); // seq 기반 폴더 경로
                 try {
                     if (existsSync(fileDir)) {
                         rm(fileDir, { recursive: true, force: true }, (err: NodeJS.ErrnoException | null) => {
@@ -220,25 +217,21 @@ export class FileService {
     }
 
     /**
-     * @param fileFrom 
      * @param memoSeq 
      * @param insertId 
      * @returns 
      * @description: 파일목록 조회 후, 구글드라이브 및 로컬파일 삭제
      */
     /* deleteMemo */
-    async deleteFiles(fileFrom: string, memoSeq: number, insertId: number): Promise<boolean> {
+    async deleteFiles(memoSeq: number, insertId: number): Promise<boolean> {
         let searchMap = {};
-        if (fileFrom) {
-            searchMap['fileFrom'] = fileFrom;
-        }
         if (memoSeq) {
             searchMap['seq'] = memoSeq;
         }
     
         try {
             // 파일 목록 조회
-            let uploadedFiles = await this.fileRepository.find({ where: searchMap, select: ['googleDriveFileId', 'fileName', 'seq']});
+            let uploadedFiles = await this.fileRepository.find({ where: searchMap, select: ['googleDriveFileId', 'fileName', 'seq'], comment: "FileService.deleteFiles"});
             
             if(!uploadedFiles || !uploadedFiles.length) {
                 return false;

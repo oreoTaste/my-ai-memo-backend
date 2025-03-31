@@ -1,89 +1,27 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Memo } from './entity/memo.entity';
 import { Like, Repository, UpdateResult } from 'typeorm';
 import { InsertMemoDto, SearchMemoDto, UpdateMemoDto } from './dto/memo.dto';
-import { FileService } from 'src/file/file.service';
 
 @Injectable()
 export class MemoService {
   constructor(
-      @InjectRepository(Memo) private memoRepository: Repository<Memo>,
-      private readonly fileService: FileService
+      @InjectRepository(Memo) private memoRepository: Repository<Memo>
   ){}
 
   /* searchMemo */
   async listMemoWithFiles(insertId: number): Promise<Memo[]> {
-    const rawData = await this.memoRepository
-        .createQueryBuilder('memo')
-        .leftJoin(
-            'UploadFile',
-            'files',
-            'memo.SEQ = files.SEQ AND files.FILE_FROM = :fileFrom',
-            { fileFrom: 'MEMO' }
-        )
-        .select([
-            'memo.SEQ AS MEMO_SEQ',
-            'memo.RAWS AS MEMO_RAWS',
-            'memo.SUBJECT AS MEMO_SUBJECT',
-            'memo.TITLE AS MEMO_TITLE',
-            'memo.ANSWER AS MEMO_ANSWER',
-            'memo.DISPLAY_YN AS MEMO_DISPLAYYN',
-            'memo.INSERT_ID AS MEMO_INSERTID',
-            'memo.CREATED_AT AS MEMO_CREATEDAT',
-            'memo.MODIFIED_AT AS MEMO_MODIFIEDAT',
-            'memo.UPDATE_ID AS MEMO_UPDATEID',
-            'files.FILE_FROM AS FILES_FILEFROM',
-            'files.SEQ AS FILES_SEQ',
-            'files.FILE_NAME AS FILES_FILENAME',
-            'files.GOOGLE_DRIVE_FILE_ID AS FILES_GOOGLEDRIVEFILEID',
-            'files.CREATED_AT AS FILES_CREATEDAT',
-            'files.MODIFIED_AT AS FILES_MODIFIEDAT',
-            'files.INSERT_ID AS FILES_INSERTID',
-            'files.UPDATE_ID AS FILES_UPDATEID',
-        ])
-        .where('memo.INSERT_ID = :insertId AND memo.DISPLAY_YN = :displayYn', { insertId, displayYn: 'Y' })
-        .getRawMany();
-
-    const memoMap = new Map<number, Memo>();
-    rawData.forEach(row => {
-        const memoSeq = row.MEMO_SEQ;
-        let memo = memoMap.get(memoSeq);
-
-        if (!memo) {
-            memo = {
-                seq: row.MEMO_SEQ,
-                raws: row.MEMO_RAWS,
-                subject: row.MEMO_SUBJECT,
-                title: row.MEMO_TITLE,
-                answer: row.MEMO_ANSWER,
-                displayYn: row.MEMO_DISPLAYYN,
-                insertId: row.MEMO_INSERTID,
-                createdAt: row.MEMO_CREATEDAT,
-                modifiedAt: row.MEMO_MODIFIEDAT,
-                updateId: row.MEMO_UPDATEID,
-                files: [],
-            };
-            memoMap.set(memoSeq, memo);
-        }
-
-        if (row.FILES_SEQ && row.FILES_FILENAME) {
-            memo.files.push({
-                fileFrom: row.FILES_FILEFROM,
-                seq: row.FILES_SEQ,
-                fileName: row.FILES_FILENAME,
-                googleDriveFileId: row.FILES_GOOGLEDRIVEFILEID || null,
-                createdAt: row.FILES_CREATEDAT || null,
-                modifiedAt: row.FILES_MODIFIEDAT || null,
-                insertId: row.FILES_INSERTID || null,
-                updateId: row.FILES_UPDATEID || null,
-            });
-        }
+    const memos = await this.memoRepository.find({
+        where: {
+            insertId,
+            displayYn: 'Y',
+        },
+        relations: ['files'],  // 'files'는 @OneToMany 관계에 해당하는 필드명입니다.
+        comment: "MemoService.listMemoWithFiles"
     });
 
-    const result = Array.from(memoMap.values());
-    Logger.debug(`[listMemoWithFiles] Mapped result: ${JSON.stringify(result[0], null, 2)} ...생략`);
-    return result;
+    return memos;
   }
 
   /* deleteMemo */
@@ -106,7 +44,7 @@ export class MemoService {
     }
     searchBody['displayYn'] = "Y";
   
-    return await this.memoRepository.find({where: searchBody});
+    return await this.memoRepository.find({where: searchBody, comment: "MemoService.searchMemo"});
   }
 
   /* insertMemo */

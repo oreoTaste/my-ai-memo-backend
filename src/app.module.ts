@@ -52,7 +52,7 @@ import { RecordController } from './record/record.controller';
     password: process.env.DB_PASSWORD,
     database: 'xe',
     entities: [User, Memo, Record, CodeGroup, Code, Todo, UploadFile],
-    synchronize: false,
+    synchronize: true,
     logging:'all',
     dropSchema: false
     })

@@ -28,7 +28,7 @@ export class RecordService {
         if(createdAt) {
             searchBody['createdAt'] = MoreThan(createdAt)
         }
-        return await this.recordRepository.find({where: searchBody, order: {recordAType: "ASC", recordBType: "ASC", createdAt: "ASC"}, take: 100});
+        return await this.recordRepository.find({where: searchBody, order: {recordAType: "ASC", recordBType: "ASC", createdAt: "ASC"}, take: 100, comment: "RecordService.searchRecord"});
     }
 
     async insertRecord(insertId: number, {count, recordAType, recordBType, recordCType, value}: InsertRecordDto): Promise<InsertResult> {
