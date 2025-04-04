@@ -3,6 +3,8 @@ import { UserService } from './user.service';
 import { AuthUser } from 'src/common/decorator/custom-decorator';
 import { AuthUserDto, InsertUserDto, InsertUserResultDto, ListUserResultDto, LoginUserDto, LoginUserResultDto, SearchUserDto, SearchUserResultDto } from './dto/user.dto';
 import { CommonResultDto } from 'src/common/dto/common.dto';
+import * as bcrypt from 'bcrypt';
+const saltOrRounds = 10;
 
 @Controller("user")
 export class UserController {
@@ -24,8 +26,8 @@ export class UserController {
    * @description 회원가입
    */
   @Post('sign-in')
-  async signIn(@Body() insertUserDto: InsertUserDto
-             , @AuthUser() authUser: AuthUserDto): Promise<InsertUserResultDto> {
+  async signIn(@Body() insertUserDto: InsertUserDto): Promise<InsertUserResultDto> {
+    insertUserDto.password = await bcrypt.hash(insertUserDto.password, saltOrRounds);
     return await this.userService.insertUser(insertUserDto);
   } 
 
@@ -36,9 +38,20 @@ export class UserController {
   async loginUser(@Body() loginUserDto: LoginUserDto
                 , @Session() session: Record<string, any>
                 , @AuthUser() authUser: AuthUserDto): Promise<LoginUserResultDto>{
-    let {result, user, message} = await this.userService.login(loginUserDto);
-    session['user'] = user;
-    return new LoginUserResultDto(user, result, message);
+    let foundUser = await this.userService.login(loginUserDto);
+    if(!foundUser) {
+      // 회원 찾기 실패 (loginId)
+      return new LoginUserResultDto(null, false, ['failed to find user']);
+    }
+  
+    let succeedToLogin = await bcrypt.compare(loginUserDto.password, foundUser.password);  
+    if (!succeedToLogin) {
+      // 회원 찾기 실패 (password)
+      return new LoginUserResultDto(null, false, ['failed to find user']);
+    }
+
+    session['user'] = foundUser;
+    return new LoginUserResultDto(foundUser);
   }
 
   /**
@@ -49,7 +62,8 @@ export class UserController {
                  , @AuthUser() authUser: AuthUserDto): Promise<SearchUserResultDto> {
     if(authUser) {
       try {
-        return await this.userService.searchUser(searchUserDto);
+        let searchedUsers = await this.userService.searchUser(searchUserDto);
+        return new SearchUserResultDto(searchedUsers);
       } catch (error) {
         const errorMessage = String(error).split('\n')[0].replace('Error: ', "");
         return new SearchUserResultDto(null, false, [errorMessage]);
