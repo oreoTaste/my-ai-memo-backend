@@ -42,13 +42,3 @@ export class SearchUserResultDto extends CommonResultDto {
 
 }
 
-export class ListUserResultDto extends CommonResultDto {
-    constructor(users: User[], result?: boolean, message?: string[]) {
-        super(result == undefined ? true : result
-            , message == undefined ? ['success'] : message);
-        this.users = users;
-    }
-
-    @IsOptional()
-    users?: User[];
-}

@@ -85,15 +85,4 @@ export class UserService {
     });
   }
 
-  /**
-   * @description 전체 회원 목록 조회
-   */
-  async listUser(idInsert: number): Promise<User[]> {
-    return await this.usersRepository.find({
-      order: { id: 'ASC' },
-      select: ['loginId', 'name', 'telegramId', 'adminYn', 'id', 'createdAt'],
-      take: 100,
-      comment: 'UserService.listUser',
-    });
-  }
 }

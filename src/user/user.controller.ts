@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, Query, Session } from '@nestjs/common';
 import { UserService } from './user.service';
 import { AuthUser } from 'src/common/decorator/custom-decorator';
-import { AuthUserDto, InsertUserDto, InsertUserResultDto, ListUserResultDto, LoginUserDto, LoginUserResultDto, SearchUserDto, SearchUserResultDto } from './dto/user.dto';
+import { AuthUserDto, InsertUserDto, InsertUserResultDto, LoginUserDto, LoginUserResultDto, SearchUserDto, SearchUserResultDto } from './dto/user.dto';
 import { CommonResultDto } from 'src/common/dto/common.dto';
 import * as bcrypt from 'bcrypt';
 const saltOrRounds = 10;
@@ -72,20 +72,5 @@ export class UserController {
     return new SearchUserResultDto(null, false, ['error while searching the user']);
   }
 
-    /**
-   * @description 회원 목록 조회
-   */
-    @Get('list')
-    async listUser(@AuthUser() authUser: AuthUserDto): Promise<ListUserResultDto> {
-      if(authUser) {
-        try {
-          return new ListUserResultDto(await this.userService.listUser(authUser.id));
-        } catch (error) {
-          const errorMessage = String(error).split('\n')[0].replace('Error: ', "");
-          return new ListUserResultDto(null, false, [errorMessage]);
-        }
-      }
-      return new ListUserResultDto(null, false, ['error while searching the user']);
-    }
   
 }
