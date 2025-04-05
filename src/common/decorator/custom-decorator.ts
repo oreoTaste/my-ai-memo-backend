@@ -1,4 +1,4 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { createParamDecorator, ExecutionContext, Logger } from '@nestjs/common';
 
 /**
  * @description 쿠키 조회
@@ -6,7 +6,7 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
  */
 export const Cookies = createParamDecorator(async (data: string, ctx: ExecutionContext) => {
   const request = ctx.switchToHttp().getRequest();
-  console.log(`${data} : cookie decorator : ${request.cookies?.[data]}`);
+  Logger.debug(`${data} : cookie decorator : ${request.cookies?.[data]}`);
   return data ? request.cookies?.[data] : null;
 });
 
@@ -25,9 +25,9 @@ export const UserId = createParamDecorator(async (data: string, ctx: ExecutionCo
  */
 export const AuthUser = createParamDecorator(async (data: string, ctx: ExecutionContext) => {
   const request = ctx.switchToHttp().getRequest();
-  console.log(`---------------------------`);
-  console.log(`sessionID : ${request.sessionID}`);
-  console.log(request.session);
-  console.log(`---------------------------`);
+  Logger.debug(`---------------------------`);
+  Logger.debug(`sessionID : ${request.sessionID}`);
+  Logger.debug(JSON.stringify(request.session).toString());
+  Logger.debug(`---------------------------`);
   return request.session?.user;
 });
