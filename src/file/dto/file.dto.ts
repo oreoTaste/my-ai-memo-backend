@@ -3,6 +3,7 @@ import { CommonResultDto } from "src/common/dto/common.dto";
 import { IsOptional } from "class-validator";
 import { UploadFile } from "../entity/file.entity";
 
+export class ListFileDto extends PickType(UploadFile, ["seq", "fileName", 'googleDriveFileId'] as const){}
 export class DownloadFileDto extends PartialType(OmitType(UploadFile, ["createdAt", "insertId", "updateId", "modifiedAt"] as const)){}
 export class SearchFilesDto extends PartialType(OmitType(UploadFile, ["createdAt", "insertId", "updateId", "modifiedAt"] as const)){}
 export class InsertFileDto extends OmitType(UploadFile, ["createdAt", "insertId", "updateId", "modifiedAt"] as const){}

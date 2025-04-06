@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Logger, Post, Query, UploadedFiles, UseI
 import { MemoService } from './memo.service';
 import { AuthUser } from 'src/common/decorator/custom-decorator';
 import { AuthUserDto } from 'src/user/dto/user.dto';
-import { DeleteMemoResultDto, GetMemoAdviceDto, GetMemoAdviceResultDto, InsertMemoDto, InsertMemoResultDto, SearchMemoDto, SearchMemoResultDto, UpdateMemoDto, UpdateMemoResultDto } from './dto/memo.dto';
+import { DeleteMemoResultDto, GetMemoAdviceDto, GetMemoAdviceResultDto, InsertMemoDto, InsertMemoResultDto, ListMemoResultDto, SearchMemoDto, UpdateMemoDto, UpdateMemoResultDto } from './dto/memo.dto';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { FileService } from 'src/file/file.service';
 import { AIAnalyzerService } from 'src/common/ai-analyzer.service';
@@ -17,14 +17,14 @@ export class MemoController {
             ){}
 
     @Get('list')
-    async searchMemo(@AuthUser() authUser: AuthUserDto,
-                     @Query() searchMemoDto: SearchMemoDto) : Promise<SearchMemoResultDto>{
+    async listMemo(@AuthUser() authUser: AuthUserDto,
+                   @Query() searchMemoDto: SearchMemoDto) : Promise<ListMemoResultDto>{
         if(!authUser) {
-            return new SearchMemoResultDto(null, false, ['please login first']);
+            return new ListMemoResultDto(null, false, ['please login first']);
         }
 
         let memos = await this.memoService.listMemoWithFiles(authUser.id);
-        return new SearchMemoResultDto(memos);
+        return new ListMemoResultDto(memos);
     }
 
     @Post('insert')
@@ -35,7 +35,6 @@ export class MemoController {
         if(!authUser) {
             return new InsertMemoResultDto(null, authUser.id, false, ['please login first']);
         }
-        console.log(files);
         const memo = await this.memoService.insertMemo(authUser.id, insertMemoDto);
         try {
             for(let file of files) {
