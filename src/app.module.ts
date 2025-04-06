@@ -12,7 +12,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import * as redisStore from 'cache-manager-ioredis';
 import { MemoModule } from './memo/memo.module';
 import { MemoController } from './memo/memo.controller';
-import { Memo } from './memo/entity/memo.entity';
+import { Memo, SharedMemo } from './memo/entity/memo.entity';
 import { Code } from './code/entity/code.entity';
 import { CodeGroup } from './code/entity/code.entity';
 import { CodeModule } from './code/code.module';
@@ -51,8 +51,8 @@ import { RecordController } from './record/record.controller';
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database: 'xe',
-    entities: [User, Memo, Record, CodeGroup, Code, Todo, UploadFile],
-    synchronize: false,
+    entities: [User, Memo, Record, CodeGroup, Code, Todo, UploadFile, SharedMemo],
+    synchronize: true,
     logging:'all',
     dropSchema: false
     })

@@ -2,11 +2,11 @@ import { Body, Controller, Delete, Get, Logger, Post, Query, UploadedFiles, UseI
 import { MemoService } from './memo.service';
 import { AuthUser } from 'src/common/decorator/custom-decorator';
 import { AuthUserDto } from 'src/user/dto/user.dto';
-import { DeleteMemoResultDto, GetMemoAdviceDto, GetMemoAdviceResultDto, InsertMemoDto, InsertMemoResultDto, SearchMemoDto, SearchMemoResultDto, UpdateMemoDto, UpdateMemoResultDto } from './dto/memo.dto';
+import { DeleteMemoResultDto, GetMemoAdviceDto, GetMemoAdviceResultDto, InsertMemoDto, ListMemoDto, ListMemoResultDto, SearchMemoDto, UpdateMemoDto, UpdateMemoResultDto } from './dto/memo.dto';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { FileService } from 'src/file/file.service';
 import { AIAnalyzerService } from 'src/common/ai-analyzer.service';
-import { getAPIKeyResultDto } from 'src/common/dto/common.dto';
+import { CommonResultDto, getAPIKeyResultDto } from 'src/common/dto/common.dto';
 import { Memo } from './entity/memo.entity';
 
 @Controller('memo')
@@ -17,26 +17,25 @@ export class MemoController {
             ){}
 
     @Get('list')
-    async searchMemo(@AuthUser() authUser: AuthUserDto,
-                     @Query() searchMemoDto: SearchMemoDto) : Promise<SearchMemoResultDto>{
+    async listMemo(@AuthUser() authUser: AuthUserDto,
+                   @Query() searchMemoDto: SearchMemoDto) : Promise<ListMemoResultDto>{
         if(!authUser) {
-            return new SearchMemoResultDto(null, false, ['please login first']);
+            return new ListMemoResultDto(null, false, ['please login first']);
         }
 
         let memos = await this.memoService.listMemoWithFiles(authUser.id);
-        return new SearchMemoResultDto(memos);
+        return new ListMemoResultDto(memos);
     }
 
     @Post('insert')
     @UseInterceptors(FilesInterceptor('files'))
     async insertMemo(@AuthUser() authUser: AuthUserDto,
                      @Body() insertMemoDto: InsertMemoDto,
-                     @UploadedFiles() files: Array<Express.Multer.File>) : Promise<InsertMemoResultDto> {
+                     @UploadedFiles() files: Array<Express.Multer.File>) : Promise<ListMemoResultDto> {
         if(!authUser) {
-            return new InsertMemoResultDto(null, authUser.id, false, ['please login first']);
+            return new ListMemoResultDto(null, false, ['please login first']);
         }
-        console.log(files);
-        const memo = await this.memoService.insertMemo(authUser.id, insertMemoDto);
+        const memo = await this.memoService.insertMemo(authUser.id, insertMemoDto) as ListMemoDto;
         try {
             for(let file of files) {
                 if (!file.path) {
@@ -47,26 +46,25 @@ export class MemoController {
             memo.files = await this.fileService.insertFiles(authUser.id, files, memo.seq);
         } catch (error) {
             Logger.error('[insertMemo] Error saving file:', error);
-            return new InsertMemoResultDto(memo, authUser.id, false, ['failed to save file']);
+            return new ListMemoResultDto([memo], false, ['failed to save file']);
         }
-        return new InsertMemoResultDto(memo, authUser.id);    
+        return new ListMemoResultDto([memo]);
     }
 
     @Post('update')
     async updateMemo(@AuthUser() authUser: AuthUserDto,
-                     @Body() updateMemoDto: UpdateMemoDto) : Promise<UpdateMemoResultDto> {
+                     @Body() updateMemoDto: UpdateMemoDto) : Promise<ListMemoResultDto> {
         if(!authUser) {
-            return new UpdateMemoResultDto(null, false, ['please login first']);
+            return new ListMemoResultDto(null, false, ['please login first']);
         }
 
         const updateResult = await this.memoService.updateMemo(authUser.id, updateMemoDto);
-        return new UpdateMemoResultDto(updateResult);    
+        return new ListMemoResultDto([updateResult]);
     }
 
     @Delete('delete')
     async deleteMemo(@AuthUser() authUser: AuthUserDto,
-                     @Query('seq') seq: number
-                    ) : Promise<DeleteMemoResultDto> {
+                     @Query('seq') seq: number) : Promise<DeleteMemoResultDto> {
         if(!authUser) {
             return new DeleteMemoResultDto(null, false, ['please login first']);
         }
@@ -101,7 +99,20 @@ export class MemoController {
         
     }
 
-    
+    @Delete('shared-delete')
+    async deleteSharedMemo(@AuthUser() authUser: AuthUserDto,
+                           @Query('seq') seq: number) : Promise<CommonResultDto> {
+        if(!authUser) {
+            return new CommonResultDto(false, ['please login first']);
+        }
+
+        let result = await this.memoService.deleteSharedMemo(authUser.id, seq);
+        if(!result) {
+            return new CommonResultDto(false, ['failed to delete shared memo']);
+        }
+        return new CommonResultDto(true, ['succeed']);
+    }
+
     @Post('get-api-key')
     async getAPIkey(@AuthUser() authUser: AuthUserDto): Promise<getAPIKeyResultDto> {
         if(!authUser) {
@@ -140,6 +151,6 @@ export class MemoController {
 
         let result = await this.aiAnalyzer.getAdvice(getMemoAdviceDto, files);
         return new GetMemoAdviceResultDto(result.advice, result.subject);
-    }    
+    }
 
 }

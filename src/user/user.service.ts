@@ -64,14 +64,12 @@ export class UserService {
    */
   async searchUser(searchUserDto: SearchUserDto): Promise<User[]> {
     const { loginId, name } = searchUserDto;
-    if (!loginId && !name) {
+    if (!loginId || !name) {
       throw new Error('no parameters');
     }
     return await this.usersRepository.find({
-      where: { loginId, name },
-      select: ['id', 'isActive', 'name', 'createdAt'],
-      order: { id: 'ASC' },
-      take: 100,
+      where: { loginId, name, isActive: true },
+      select: ['id', 'loginId', 'name', 'createdAt'],
       comment: 'UserService.searchUser',
     });
   }

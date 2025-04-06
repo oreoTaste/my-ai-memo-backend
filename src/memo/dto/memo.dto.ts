@@ -3,37 +3,45 @@ import { Memo } from "../entity/memo.entity";
 import { CommonResultDto } from "src/common/dto/common.dto";
 import { IsOptional } from "class-validator";
 import { DeleteResult, UpdateResult } from "typeorm";
+import { ListFileDto } from "src/file/dto/file.dto";
+import { UserInfoDto } from "src/user/dto/user.dto";
 
 export class SearchMemoDto extends PartialType(Memo){}
-export class InsertMemoDto extends OmitType(Memo, ['seq', "createdAt", "insertId", "updateId", "modifiedAt"] as const){}
-export class UpdateMemoDto extends OmitType(Memo, ["createdAt", "insertId", "updateId", "modifiedAt"] as const){}
+export class InsertMemoDto extends OmitType(Memo, ['seq', "createdAt", "insertId", "updateId", "modifiedAt"] as const){
+
+    @IsOptional()
+    sharedIds: Number[] | string;
+}
+export class UpdateMemoDto extends OmitType(Memo, ["createdAt", "insertId", "updateId", "modifiedAt"] as const){
+
+    @IsOptional()
+    sharedIds: Number[] | string;
+}
 export class GetMemoAdviceDto extends PickType(Memo, ["raws", "title"] as const){}
 
-export class SearchMemoResultDto extends CommonResultDto {
-    constructor(memos: Memo[], result?: boolean, message?: string[]) {
+export class ListMemoDto extends OmitType(Memo, ["files", "insertUser", "sharedMemos"] as const){
+
+    @IsOptional()
+    files?: ListFileDto[];
+
+    @IsOptional()
+    insertUser?: UserInfoDto;
+
+    @IsOptional()
+    sharedUsers?: UserInfoDto[];
+}
+
+export class ListMemoResultDto extends CommonResultDto {
+    constructor(memos: ListMemoDto[], result?: boolean, message?: string[]) {
         super(result == undefined ? true : result
             , message == undefined ? ['success'] : message);
         this.memos = memos ? memos : null;
     }
 
     @IsOptional()
-    memos?: Memo[];
+    memos?: ListMemoDto[];
 }
-export class InsertMemoResultDto extends CommonResultDto {
-    constructor(memo: Memo, insertId: number, result?: boolean, message?: string[]) {
-        super(result == undefined ? true : result
-            , message == undefined ? ['success'] : message);
-        this.memo = memo ? memo : null;
-        this.insertId = insertId ? insertId : null;
-        }
 
-    @IsOptional()
-    memo?: Memo;
-
-    @IsOptional()
-    insertId?: number;
-
-}
 export class UpdateMemoResultDto extends CommonResultDto {
     constructor(updateResult: UpdateResult, result?: boolean, message?: string[]) {
         super(result == undefined ? true : result

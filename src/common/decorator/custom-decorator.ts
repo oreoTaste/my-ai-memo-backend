@@ -27,7 +27,7 @@ export const AuthUser = createParamDecorator(async (data: string, ctx: Execution
   const request = ctx.switchToHttp().getRequest();
   Logger.debug(`---------------------------`);
   Logger.debug(`sessionID : ${request.sessionID}`);
-  Logger.debug(JSON.stringify(request.session).toString());
+  Logger.debug(`session : ${JSON.stringify(request.session)}`);
   Logger.debug(`---------------------------`);
   return request.session?.user;
 });

@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean, IsNotEmpty, IsNumber, IsString, IsStrongPassword, Length } from 'class-validator';
 import { CommonEntity } from 'src/common/entity/common.entity';
-import { Entity, Column, PrimaryGeneratedColumn, Index } from 'typeorm';
+import { Memo, SharedMemo } from 'src/memo/entity/memo.entity';
+import { Entity, Column, PrimaryGeneratedColumn, Index, OneToMany } from 'typeorm';
 
 @Entity({name: "Y_USER"})
 @Index('Y_USER_IDX1', ['loginId'], {unique: true})
@@ -44,4 +45,11 @@ export class User extends CommonEntity{
 
   @Column({nullable: true, type: 'varchar2', length: 10, name: "TELEGRAM_ID"})
   telegramId: string;
+
+  @OneToMany(() => Memo, (memo) => memo.insertUser, {lazy: true})
+  memos: Memo[];
+
+
+  @OneToMany(() => SharedMemo, (shared) => shared.sharedUser, {lazy: true})
+  sharedMemos: SharedMemo[];
 }
