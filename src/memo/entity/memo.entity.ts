@@ -10,7 +10,7 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryColumn,
 @Index("Y_MEMO_IDX2", ['insertId', 'title'], {unique: false})
 @Index("Y_MEMO_IDX3", ['createdAt'], {unique: false})
 export class Memo extends CommonEntity{
-    @PrimaryGeneratedColumn({zerofill: true, type: 'number', primaryKeyConstraintName: "Y_MEMO_PK", name: "SEQ"})
+    @PrimaryGeneratedColumn({type: 'number', primaryKeyConstraintName: "Y_MEMO_PK", name: "SEQ"})
     @IsNumber()
     @ApiProperty()
     seq: number;
@@ -39,6 +39,16 @@ export class Memo extends CommonEntity{
     @ApiProperty({ type: () => UploadFile, isArray: true })
     files: UploadFile[];
 
+    // 메모 공유받은 사람 정보
+    @OneToMany(() => SharedMemo, (sharedMemo) => sharedMemo.memo, { /*lazy: true */ })
+    @ApiProperty({ type: () => SharedMemo, isArray: true })
+    sharedMemos: SharedMemo[];
+
+    // 메모 작성자 정보
+    @ManyToOne(() => User, (user) => user.memos, { eager: true })
+    @JoinColumn({ name: "INSERT_ID" })
+    @ApiProperty({ type: () => User })
+    insertUser: User;
 }
 
 @Entity({ name: "Y_SHARED_MEMO" })
@@ -54,13 +64,15 @@ export class SharedMemo extends CommonEntity {
     @ApiProperty()
     seq: number;
 
-    @ManyToOne(() => Memo, (memo) => memo.seq, { eager: true, createForeignKeyConstraints: false })
+    // 공유받은 메모엔티티 (메모내용)
+    @ManyToOne(() => Memo, (memo) => memo.sharedMemos, { eager: true, createForeignKeyConstraints: false })
     @JoinColumn({ name: "SEQ" })
     @ApiProperty({ type: () => Memo })
     memo: Memo;
 
-    @ManyToOne(() => User, (user) => user.id, { eager: true, createForeignKeyConstraints: false })
-    @JoinColumn({ name: "INSERT_ID" })
+    // 메모 공유받은 사람 정보
+    @ManyToOne(() => User, (user) => user.sharedMemos, { eager: true })
+    @JoinColumn({ name: "SHARED_ID" })
     @ApiProperty({ type: () => User })
-    insertUser: User;
+    sharedUser: User;
 }

@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Memo, SharedMemo } from './entity/memo.entity';
 import { Like, Repository, UpdateResult } from 'typeorm';
 import { InsertMemoDto, ListMemoDto, SearchMemoDto, UpdateMemoDto } from './dto/memo.dto';
+import { ListFileDto } from 'src/file/dto/file.dto';
 
 @Injectable()
 export class MemoService {
@@ -18,9 +19,23 @@ export class MemoService {
         insertId: insertId,
         displayYn: 'Y'
       },
-      relations: ['files'],  // files 관계를 포함
+      relations: ["files", "sharedMemos", "sharedMemos.sharedUser"],
       comment: 'MemoService.listMemoWithFiles - Own Memos' 
     });
+
+    const ownMemosWithSharedUsers = ownMemos.map(({sharedMemos, ...memo}) => ({
+      ...memo,
+      insertUser: {
+        loginId: memo.insertUser.loginId,
+        id: memo.insertUser.id,
+        name: memo.insertUser.name,
+      },
+      sharedUsers: sharedMemos.map((shared) => ({
+        loginId: shared.sharedUser.loginId,
+        id: shared.sharedUser.id,
+        name: shared.sharedUser.name,
+      })),
+    }));
 
     // Shared Memos
     const sharedMemos = await this.sharedMemoRepository.find({
@@ -28,19 +43,23 @@ export class MemoService {
         sharedId: insertId,
         memo: { displayYn: "Y" },
       },
-      relations: ["memo", "memo.files", "insertUser"],
+      relations: ["memo", "memo.files", "memo.insertUser"],
+      comment: 'MemoService.listMemoWithFiles - Shared Memos'
     });
 
-    // SharedMemo에서 Memo와 insertLoginId 추출
-    const sharedMemosWithLoginId = sharedMemos.map((shared) => ({
+    // SharedMemo.memo에서 메모 작성자 정보 추출 (insertUser - {loginId, id, name})
+    const sharedMemosWithInsertUser = sharedMemos.map((shared: SharedMemo) => ({
       ...shared.memo,
-      insertLoginId: shared.insertUser?.loginId || "",
+      insertUser: {
+        loginId: shared.memo.insertUser.loginId,
+        id: shared.memo.insertUser.id,
+        name: shared.memo.insertUser.name,
+      },
+      sharedUsers: [], // 공유받은 메모는 현재 사용자가 수신자이므로 빈 배열
     }));
 
     // 결합 및 정렬
-    const combinedMemos = [...ownMemos, ...sharedMemosWithLoginId];
-    // combinedMemos.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()); // front에서 sort예정
-
+    const combinedMemos = [...ownMemosWithSharedUsers, ...sharedMemosWithInsertUser];
     return combinedMemos;
   }
 
@@ -79,21 +98,34 @@ export class MemoService {
         raws: insertMemoDto.raws
     });
 
+    console.log(insertMemoDto);
     // 2. 공유 메모에 추가
-    if(insertMemoDto.sharedId) {
-      await this.sharedMemoRepository.save({
-        sharedId: insertMemoDto.sharedId, /* 공유받을 사람 */
-        seq: insertedMemo.seq,
-        insertId,
-        updateId: insertId
-      })
+    if(insertMemoDto.sharedIds) {
+      const sharedIds = typeof insertMemoDto.sharedIds === "string" 
+      ? JSON.parse(insertMemoDto.sharedIds) 
+      : insertMemoDto.sharedIds;
+            
+      if (sharedIds.length) {
+        // 비동기 작업을 병렬로 처리
+        await Promise.all(
+          sharedIds.filter((sharedId: number) => sharedId !== insertId) /* 공유받을 사람에서 메모 등록자는 제외 */
+            .map(async (sharedId: number) => {
+            await this.sharedMemoRepository.save({
+              sharedId, /* 공유받을 사람 */
+              seq: insertedMemo.seq,
+              insertId,
+              updateId: insertId,
+            });
+          })
+        );
+      }
     }
     return insertedMemo;
   }
 
   /* updateMemo */
   async updateMemo(insertId: number, updateMemoDto: UpdateMemoDto): Promise<UpdateResult> {
-    // 가. 나의 메모
+    // 가. 나의 메모 업데이트
     let foundMemo = await this.memoRepository.findOne({where: {seq: updateMemoDto.seq}});
     // 체크 1. 변경할 메모가 없는 경우 종료
     if(!foundMemo) {
@@ -110,28 +142,30 @@ export class MemoService {
       raws: updateMemoDto.raws
     });
 
-    // 나. 공유 메모
-    let sharedMemo = await this.sharedMemoRepository.findOne({where: {seq: updateMemoDto.seq}});
-    if(updateMemoDto.sharedId && !sharedMemo) {
-      // 로직 1. 공유한적 없는데 공유하는 경우 (x -> o)
-      await this.sharedMemoRepository.save({
-        sharedId: updateMemoDto.sharedId, /* 공유받을 사람 */
-        seq: updateMemoDto.seq,
-        insertId,
-        updateId: insertId
-      });
-      
-    } else if(!updateMemoDto.sharedId && sharedMemo) {
-      // 로직 2. 공유한적 있고, 공유하지 않는 경우 (o -> x)
-      await this.sharedMemoRepository.delete({seq: updateMemoDto.seq, sharedId: sharedMemo.sharedId});
+    // 나. 공유 메모 업데이트 (기존 공유 삭제 + 신규 공유 생성)
+    await this.sharedMemoRepository.delete({
+      seq: updateMemoDto.seq
+    });
 
-    } else if(updateMemoDto.sharedId && updateMemoDto.sharedId !== sharedMemo.insertId) {
-      // 로직 3. 공유한적은 사람와 공유하고 있는 사람이 다른 경우 (o -> o)
-      await this.sharedMemoRepository.update({seq: updateMemoDto.seq}, {sharedId: updateMemoDto.sharedId});
+    if(updateMemoDto.sharedIds) {
+      const sharedIds = typeof updateMemoDto.sharedIds === "string" 
+      ? JSON.parse(updateMemoDto.sharedIds) 
+      : updateMemoDto.sharedIds;
 
-    } else {
-      // 로직 4. 공유한적은 사람와 공유하고 있는 사람이 같은 경우 (o -> o)
-      // 변동사항 없음
+      if (sharedIds.length) {
+        // 비동기 작업을 병렬로 처리
+        await Promise.all(
+          sharedIds.filter((sharedId: number) => sharedId !== insertId) /* 공유받을 사람에서 메모 등록자는 제외 */
+            .map(async (sharedId: number) => {
+            await this.sharedMemoRepository.save({
+              sharedId, /* 공유받을 사람 */
+              seq: updateMemoDto.seq,
+              insertId,
+              updateId: insertId,
+            });
+          })
+        );
+      }
     }
 
     return updatedMemo;

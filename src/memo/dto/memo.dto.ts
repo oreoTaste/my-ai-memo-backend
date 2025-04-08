@@ -4,26 +4,31 @@ import { CommonResultDto } from "src/common/dto/common.dto";
 import { IsOptional } from "class-validator";
 import { DeleteResult, UpdateResult } from "typeorm";
 import { ListFileDto } from "src/file/dto/file.dto";
+import { UserInfoDto } from "src/user/dto/user.dto";
 
 export class SearchMemoDto extends PartialType(Memo){}
 export class InsertMemoDto extends OmitType(Memo, ['seq', "createdAt", "insertId", "updateId", "modifiedAt"] as const){
 
     @IsOptional()
-    sharedId: number;
+    sharedIds: Number[] | string;
 }
 export class UpdateMemoDto extends OmitType(Memo, ["createdAt", "insertId", "updateId", "modifiedAt"] as const){
 
     @IsOptional()
-    sharedId: number;
+    sharedIds: Number[] | string;
 }
 export class GetMemoAdviceDto extends PickType(Memo, ["raws", "title"] as const){}
 
-export class ListMemoDto extends OmitType(Memo, ["files"] as const){
+export class ListMemoDto extends OmitType(Memo, ["files", "insertUser", "sharedMemos"] as const){
+
     @IsOptional()
     files?: ListFileDto[];
 
     @IsOptional()
-    insertLoginId?: string;
+    insertUser?: UserInfoDto;
+
+    @IsOptional()
+    sharedUsers?: UserInfoDto[];
 }
 
 export class ListMemoResultDto extends CommonResultDto {
@@ -37,7 +42,7 @@ export class ListMemoResultDto extends CommonResultDto {
     memos?: ListMemoDto[];
 }
 export class InsertMemoResultDto extends CommonResultDto {
-    constructor(memo: Memo, insertId: number, result?: boolean, message?: string[]) {
+    constructor(memo: ListMemoDto, insertId: number, result?: boolean, message?: string[]) {
         super(result == undefined ? true : result
             , message == undefined ? ['success'] : message);
         this.memo = memo ? memo : null;
@@ -45,7 +50,7 @@ export class InsertMemoResultDto extends CommonResultDto {
         }
 
     @IsOptional()
-    memo?: Memo;
+    memo?: ListMemoDto;
 
     @IsOptional()
     insertId?: number;

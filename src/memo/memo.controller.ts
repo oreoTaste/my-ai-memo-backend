@@ -64,8 +64,7 @@ export class MemoController {
 
     @Delete('delete')
     async deleteMemo(@AuthUser() authUser: AuthUserDto,
-                     @Query('seq') seq: number
-                    ) : Promise<DeleteMemoResultDto> {
+                     @Query('seq') seq: number) : Promise<DeleteMemoResultDto> {
         if(!authUser) {
             return new DeleteMemoResultDto(null, false, ['please login first']);
         }
