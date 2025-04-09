@@ -41,21 +41,7 @@ export class ListMemoResultDto extends CommonResultDto {
     @IsOptional()
     memos?: ListMemoDto[];
 }
-export class InsertMemoResultDto extends CommonResultDto {
-    constructor(memo: ListMemoDto, insertId: number, result?: boolean, message?: string[]) {
-        super(result == undefined ? true : result
-            , message == undefined ? ['success'] : message);
-        this.memo = memo ? memo : null;
-        this.insertId = insertId ? insertId : null;
-        }
 
-    @IsOptional()
-    memo?: ListMemoDto;
-
-    @IsOptional()
-    insertId?: number;
-
-}
 export class UpdateMemoResultDto extends CommonResultDto {
     constructor(updateResult: UpdateResult, result?: boolean, message?: string[]) {
         super(result == undefined ? true : result
