@@ -1,9 +1,8 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Memo, SharedMemo } from './entity/memo.entity';
-import { In, Like, Repository, UpdateResult } from 'typeorm';
-import { InsertMemoDto, ListMemoDto, SearchMemoDto, UpdateMemoDto } from './dto/memo.dto';
-import { ListFileDto } from 'src/file/dto/file.dto';
+import { Like, Repository, UpdateResult } from 'typeorm';
+import { InsertMemoDto, ListMemoDto, SearchMemoDto, SharedInfo, UpdateMemoDto } from './dto/memo.dto';
 
 @Injectable()
 export class MemoService {
@@ -34,6 +33,7 @@ export class MemoService {
         loginId: shared.sharedUser.loginId,
         id: shared.sharedUser.id,
         name: shared.sharedUser.name,
+        shareType: shared.shareType
       })),
     }));
 
@@ -55,7 +55,12 @@ export class MemoService {
         id: shared.memo.insertUser.id,
         name: shared.memo.insertUser.name,
       },
-      sharedUsers: [], // 공유받은 메모는 현재 사용자가 수신자이므로 빈 배열
+      sharedUsers: [{
+        loginId: shared.sharedUser.loginId,
+        id: shared.sharedUser.id,
+        name: shared.sharedUser.name,
+        shareType: shared.shareType
+      }] // 공유받은 메모는 현재 사용자가 수신자
     }));
 
     // 결합 및 정렬
@@ -102,7 +107,12 @@ export class MemoService {
     let returnedMemo = {...insertedMemo} as ListMemoDto;
 
     // 2. insertUser 리턴값에 추가
-    let insertUser = await this.memoRepository.findOne({where: {seq: insertedMemo.seq}, relations: ["insertUser"], select: ["insertUser"]});
+    let insertUser = await this.memoRepository.findOne({
+      where: {seq: insertedMemo.seq}, 
+      relations: ["insertUser"], 
+      select: ["insertUser"], 
+      comment: "MemoService.insertMemo#findMemo"});
+
     returnedMemo.insertUser = {
       loginId: insertUser.insertUser.loginId,
       id: insertUser.insertUser.id,
@@ -111,31 +121,49 @@ export class MemoService {
 
     // 3. [공유 메모]
     // 3-1. 공유 메모에 추가
-    if(insertMemoDto.sharedIds) {
-      const sharedIds = typeof insertMemoDto.sharedIds === "string" 
-      ? JSON.parse(insertMemoDto.sharedIds) 
-      : insertMemoDto.sharedIds;
-            
-      if (sharedIds.length) {
-        // 비동기 작업을 병렬로 처리
-        await Promise.all(
-          sharedIds.filter((sharedId: number) => sharedId !== insertId) /* 공유받을 사람에서 메모 등록자는 제외 */
-            .map(async (sharedId: number) => {
-            await this.sharedMemoRepository.save({
-              sharedId, /* 공유받을 사람 */
-              seq: insertedMemo.seq,
-              insertId,
-              updateId: insertId,
-            });
-          })
-        );
+    if (insertMemoDto.sharedInfosJson) {
+      console.log("insertMemoDto.sharedInfosJson" , insertMemoDto.sharedInfosJson);
+      try {
+        const parsedInfos = JSON.parse(insertMemoDto.sharedInfosJson);
+        if (Array.isArray(parsedInfos)) {
+          insertMemoDto.sharedInfos = parsedInfos.map((info: SharedInfo) => ({
+            id: String(info.id),
+            shareType: String(info.shareType),
+          }));
+        } else {
+          throw new Error('Invalid sharedInfosJson format');
+        }
+        console.log("parsedInfos" , parsedInfos);
+        insertMemoDto.sharedInfos = parsedInfos as SharedInfo[];
+
+      } catch (error) {
+        throw new BadRequestException('Invalid sharedInfosJson: must be a valid JSON array');
       }
+      
+      if(insertMemoDto.sharedInfos.length) {
+        await Promise.all(insertMemoDto.sharedInfos.map(async (sharedInfo: SharedInfo) => {
+          await this.sharedMemoRepository.save({
+            sharedId: Number(sharedInfo.id),
+            seq: insertedMemo.seq,
+            insertId,
+            updateId: insertId,
+            shareType: sharedInfo.shareType
+          });
+        }));
+      }
+
       // 3-2. 공유받은 사람 리턴값에 추가
-      let sharedUser = await this.sharedMemoRepository.find({ where: { seq: insertedMemo.seq }, relations: ["sharedUser"], select: ["sharedId", "sharedUser"] });
+      let sharedUser = await this.sharedMemoRepository.find({ 
+        where: { seq: insertedMemo.seq },
+        relations: ["sharedUser"], 
+        select: ["sharedId", "shareType", "sharedUser"], 
+        comment: "MemoService.insertMemo#findSharedMemo"});
+
       returnedMemo.sharedUsers = sharedUser.map((shared) => ({
         loginId: shared.sharedUser.loginId,
         id: shared.sharedUser.id,
-        name: shared.sharedUser.name
+        name: shared.sharedUser.name,
+        shareType: shared.shareType
       }))
     }
 
@@ -145,7 +173,10 @@ export class MemoService {
   /* updateMemo */
   async updateMemo(insertId: number, updateMemoDto: UpdateMemoDto): Promise<ListMemoDto> {
     return await this.memoRepository.manager.transaction(async (transactionalEntityManager) => {
-      // 1. 메모 존재 여부 확인 및 관계 데이터 조회
+      let editable = false;
+
+      // 체크로직 1) 메모 존재 여부 확인 및 메모 변경 권한 체크
+      // 1-1. 메모 존재 여부 확인
       const memo = await transactionalEntityManager.findOne(Memo, {
         where: { seq: updateMemoDto.seq },
         relations: ['insertUser', 'files', 'sharedMemos', 'sharedMemos.sharedUser'],
@@ -154,8 +185,28 @@ export class MemoService {
       if (!memo) {
         throw new NotFoundException(`seq ${updateMemoDto.seq}에 해당하는 메모가 없습니다.`);
       }
-  
-      // 2. 메모 정보 업데이트
+ 
+      // 1-2. 메모변경권한 확인
+      // 1-2-1. 본인이 작성한 메모인 경우
+      if(memo.insertId === insertId) {
+        editable = true;
+      }
+
+      if(!editable) {
+        // 1-2-2. 공유 받은 권한이 "편집"인 경우
+        let sharedUser = await transactionalEntityManager.findOne(SharedMemo, {
+          where: { seq: updateMemoDto.seq, sharedId: insertId, shareType: "edit" }
+        });
+        if(sharedUser.sharedId === insertId) {
+          editable = true;
+        }
+      }
+
+      if(!editable) {
+        throw new NotFoundException(`메모를 수정할 권한이 없습니다.`);
+      }
+
+      // 1. 메모 정보 업데이트
       const updateData = {
         updateId: insertId,
         modifiedAt: new Date(),
@@ -167,54 +218,60 @@ export class MemoService {
   
       await transactionalEntityManager.update(Memo, updateMemoDto.seq, updateData);
   
-      // 3. 공유 메모 처리
-      if (updateMemoDto.sharedIds !== undefined) {
-        // sharedIds 파싱 (DTO 검증으로 입력값이 올바른지 확인 가정)
-        const newSharedIds = typeof updateMemoDto.sharedIds === 'string'
-          ? JSON.parse(updateMemoDto.sharedIds)
-          : updateMemoDto.sharedIds;
+      // 2. 공유 메모 처리
+      if (updateMemoDto.sharedInfosJson) {
+        try {
+          const parsedInfos = JSON.parse(updateMemoDto.sharedInfosJson);
+          if (Array.isArray(parsedInfos)) {
+            updateMemoDto.sharedInfos = parsedInfos.map((info: SharedInfo) => ({
+              id: String(info.id),
+              shareType: String(info.shareType),
+            }));
+          } else {
+            throw new Error('Invalid sharedInfosJson format');
+          }
+          updateMemoDto.sharedInfos = parsedInfos as SharedInfo[];
   
-        // 메모 등록자 본인을 공유 대상에서 제외
-        const validSharedIds = newSharedIds.filter((id: number) => id !== insertId);
-  
-        // 기존 공유 사용자 ID 목록
-        const existingSharedIds = memo.sharedMemos.map((shared) => shared.sharedId);
-  
-        // 추가 및 삭제할 ID 계산
-        const idsToAdd = validSharedIds.filter((id: number) => !existingSharedIds.includes(id));
-        const idsToRemove = existingSharedIds.filter((id: number) => !validSharedIds.includes(id));
-  
-        // 삭제할 공유 메모 제거
-        if (idsToRemove.length > 0) {
-          await transactionalEntityManager.delete(SharedMemo, {
-            seq: updateMemoDto.seq,
-            sharedId: In(idsToRemove),
-          });
+        } catch (error) {
+          throw new BadRequestException('Invalid sharedInfosJson: must be a valid JSON array');
         }
   
-        // 새로운 공유 메모 추가
-        if (idsToAdd.length > 0) {
-          const newShares = idsToAdd.map((sharedId: number) => ({
-            sharedId,
+        // 클라이언트에서 받은 공유 정보 (본인 제외)
+        const newSharedInfos = updateMemoDto.sharedInfos
+          .filter(({ id }) => {
+            if (id === String(insertId)) {
+              return false; // 메모 등록자 제외
+            }
+            return true;
+          })
+          .map(({ id, shareType }) => ({
+            sharedId: Number(id),
+            shareType,
             seq: updateMemoDto.seq,
             insertId,
             updateId: insertId,
-            createdAt: new Date(), // 새로운 공유자에 대해 생성 시간 명시
+            createdAt: new Date(),
             modifiedAt: new Date(),
           }));
+
+        // 기존 공유 메모 모두 삭제
+        await transactionalEntityManager.delete(SharedMemo, {
+          seq: updateMemoDto.seq,
+        });
   
-          await transactionalEntityManager.save(SharedMemo, newShares);
+        // 새로운 공유 메모 삽입
+        if (newSharedInfos.length > 0) {
+          await transactionalEntityManager.save(SharedMemo, newSharedInfos);
         }
       }
-      // sharedIds가 undefined가 아닌 경우만 처리. undefined면 공유자 변경 없음.
   
-      // 4. 업데이트된 메모 조회 (관계 포함)
+      // 3. 업데이트된 메모 조회 (관계 포함)
       const updatedMemo = await transactionalEntityManager.findOne(Memo, {
         where: { seq: updateMemoDto.seq },
         relations: ['insertUser', 'files', 'sharedMemos', 'sharedMemos.sharedUser'],
       });
   
-      // 5. ListMemoDto로 매핑
+      // 4. ListMemoDto로 매핑
       const listMemoDto: ListMemoDto = {
         seq: updatedMemo.seq,
         raws: updatedMemo.raws,
@@ -235,12 +292,12 @@ export class MemoService {
           id: shared.sharedUser.id,
           loginId: shared.sharedUser.loginId,
           name: shared.sharedUser.name,
+          shareType: shared.shareType,
         })),
         files: updatedMemo.files.map((file) => ({
           seq: file.seq,
           fileName: file.fileName,
           googleDriveFileId: file.googleDriveFileId,
-          // ListFileDto에 필요한 다른 필드 추가
         })),
       };
   

@@ -64,6 +64,9 @@ export class SharedMemo extends CommonEntity {
     @ApiProperty()
     seq: number;
 
+    @Column({ nullable: false, type: "varchar2", length: 5, default: "view", name: "SHARE_TYPE", comment: "공유타입(view:조회, edit:편집)" })
+    shareType: string;
+
     // 공유받은 메모엔티티 (메모내용)
     @ManyToOne(() => Memo, (memo) => memo.sharedMemos, { eager: true, createForeignKeyConstraints: false })
     @JoinColumn({ name: "SEQ" })

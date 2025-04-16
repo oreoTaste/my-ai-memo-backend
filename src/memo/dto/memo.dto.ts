@@ -6,16 +6,29 @@ import { DeleteResult, UpdateResult } from "typeorm";
 import { ListFileDto } from "src/file/dto/file.dto";
 import { UserInfoDto } from "src/user/dto/user.dto";
 
+export class SharedInfo {
+    id: string;
+    shareType: string;
+}
+
 export class SearchMemoDto extends PartialType(Memo){}
 export class InsertMemoDto extends OmitType(Memo, ['seq', "createdAt", "insertId", "updateId", "modifiedAt"] as const){
 
     @IsOptional()
-    sharedIds: Number[] | string;
+    sharedInfos?: SharedInfo[];
+
+    // client -> server때 사용
+    @IsOptional()
+    sharedInfosJson?: string;
 }
 export class UpdateMemoDto extends OmitType(Memo, ["createdAt", "insertId", "updateId", "modifiedAt"] as const){
 
     @IsOptional()
-    sharedIds: Number[] | string;
+    sharedInfos?: SharedInfo[];
+
+    // client -> server때 사용
+    @IsOptional()
+    sharedInfosJson?: string;
 }
 export class GetMemoAdviceDto extends PickType(Memo, ["raws", "title"] as const){}
 

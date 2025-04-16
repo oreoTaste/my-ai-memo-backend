@@ -35,6 +35,7 @@ export class MemoController {
         if(!authUser) {
             return new ListMemoResultDto(null, false, ['please login first']);
         }
+
         const memo = await this.memoService.insertMemo(authUser.id, insertMemoDto) as ListMemoDto;
         try {
             for(let file of files) {

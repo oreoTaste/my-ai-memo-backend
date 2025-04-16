@@ -4,7 +4,10 @@ import { IsOptional } from "class-validator";
 import { CommonResultDto } from "src/common/dto/common.dto";
 
 // 노출할 수 있는 고객정보 : 메모 조회시 활용
-export class UserInfoDto extends PickType(User, ['id', 'loginId', 'name'] as const){}
+export class UserInfoDto extends PickType(User, ['id', 'loginId', 'name'] as const){
+    @IsOptional()
+    sharedType?: string;
+}
 
 export class LoginUserDto extends PickType(User, ['loginId', 'password'] as const){}
 export class InsertUserDto extends PickType(User, ['loginId', 'password', 'name', 'telegramId'] as const){}
