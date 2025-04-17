@@ -11,7 +11,7 @@ export class UserInfoDto extends PickType(User, ['id', 'loginId', 'name'] as con
 
 export class LoginUserDto extends PickType(User, ['loginId', 'password'] as const){}
 export class InsertUserDto extends PickType(User, ['loginId', 'password', 'name', 'telegramId'] as const){}
-export class SearchUserDto extends PickType(User, ['loginId', 'name'] as const){}
+export class SearchUserDto extends PickType(User, ['loginId'] as const){}
 export class AuthUserDto extends PickType(User, ['id', 'loginId', 'name', 'isActive', 'createdAt', 'adminYn']){}
 export class ModifyUserDto extends PartialType(PickType(User, ['id', 'loginId', 'name', 'telegramId'])){
     @IsOptional()

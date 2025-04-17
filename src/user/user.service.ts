@@ -63,12 +63,12 @@ export class UserService {
    * @description 회원 검색
    */
   async searchUser(searchUserDto: SearchUserDto): Promise<User[]> {
-    const { loginId, name } = searchUserDto;
-    if (!loginId || !name) {
+    const { loginId } = searchUserDto;
+    if (!loginId) {
       throw new Error('no parameters');
     }
     return await this.usersRepository.find({
-      where: { loginId, name, isActive: true },
+      where: { loginId, isActive: true },
       select: ['id', 'loginId', 'name', 'createdAt'],
       comment: 'UserService.searchUser',
     });
