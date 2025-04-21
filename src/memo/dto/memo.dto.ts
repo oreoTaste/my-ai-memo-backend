@@ -4,7 +4,7 @@ import { CommonResultDto } from "src/common/dto/common.dto";
 import { IsOptional } from "class-validator";
 import { DeleteResult, UpdateResult } from "typeorm";
 import { ListFileDto } from "src/file/dto/file.dto";
-import { UserInfoDto } from "src/user/dto/user.dto";
+import { SharedUserInfoDto } from "src/user/dto/user.dto";
 
 export class SharedInfo {
     id: string;
@@ -38,10 +38,10 @@ export class ListMemoDto extends OmitType(Memo, ["files", "insertUser", "sharedM
     files?: ListFileDto[];
 
     @IsOptional()
-    insertUser?: UserInfoDto;
+    insertUser?: SharedUserInfoDto;
 
     @IsOptional()
-    sharedUsers?: UserInfoDto[];
+    sharedUsers?: SharedUserInfoDto[];
 }
 
 export class ListMemoResultDto extends CommonResultDto {

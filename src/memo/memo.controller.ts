@@ -53,14 +53,39 @@ export class MemoController {
     }
 
     @Post('update')
+    @UseInterceptors(FilesInterceptor('files'))
     async updateMemo(@AuthUser() authUser: AuthUserDto,
-                     @Body() updateMemoDto: UpdateMemoDto) : Promise<ListMemoResultDto> {
+                     @Body() updateMemoDto: UpdateMemoDto,
+                     @UploadedFiles() files: Array<Express.Multer.File>
+                    ) : Promise<ListMemoResultDto> {
+        Logger.debug('▶ updateMemo 호출됨');
+        Logger.debug(`   authUser.id: ${authUser.id}`);
+        Logger.debug(`   DTO: ${JSON.stringify(updateMemoDto)}`);
+        // Logger.debug(`   업로드된 파일 개수: ${files?.length ?? 0}`);
+        // if (files && files.length) {
+        //     files.forEach(f =>
+        //     Logger.debug(`     • 원본 이름: ${f.originalname}, 저장 이름: ${f.filename}`)
+        //     );
+        // }                        
+
         if(!authUser) {
             return new ListMemoResultDto(null, false, ['please login first']);
         }
 
-        const updateResult = await this.memoService.updateMemo(authUser.id, updateMemoDto);
-        return new ListMemoResultDto([updateResult]);
+        // 1) update memo metadata
+        const updatedMemo = await this.memoService.updateMemo(authUser.id, updateMemoDto);
+
+        // 2) delete previously uploaded files
+        // await this.fileService.deleteFiles(updatedMemo.seq, authUser.id);
+
+        // 3) handle newly uploaded files
+        // if (files && files.length > 0) {
+        //     const savedFiles = await this.fileService.insertFiles(authUser.id, files, updatedMemo.seq);
+        //     // merge existing files with new ones
+        //     updatedMemo.files = savedFiles;
+        // }
+
+        return new ListMemoResultDto([updatedMemo]);
     }
 
     @Delete('delete')

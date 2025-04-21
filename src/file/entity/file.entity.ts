@@ -6,15 +6,15 @@ import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from "typeorm";
 @Entity({name: "Y_FILE"})
 export class UploadFile extends CommonEntity{
 
-    @PrimaryColumn({nullable: false, type: 'varchar2', primaryKeyConstraintName: "Y_FILE_PK", name: "SEQ"})
+    @PrimaryColumn({nullable: false, type: 'varchar2', primaryKeyConstraintName: "Y_FILE_PK", name: "SEQ", comment: "업로드 파일 ID"})
     @ApiProperty()
     seq: number;
 
-    @PrimaryColumn({nullable: false, type: 'varchar2', length: 500, primaryKeyConstraintName: "Y_FILE_PK", name: "FILE_NAME"})
+    @PrimaryColumn({nullable: false, type: 'varchar2', length: 500, primaryKeyConstraintName: "Y_FILE_PK", name: "FILE_NAME", comment: "업로드 파일명"})
     @ApiProperty()
     fileName: string;
 
-    @Column({nullable: true, type: "varchar2", length: 50, name: "GOOGLE_DRIVE_FILE_ID"})
+    @Column({nullable: true, type: "varchar2", length: 50, name: "GOOGLE_DRIVE_FILE_ID", comment: "업로드 파일 구글ID"})
     @ApiProperty()
     googleDriveFileId: string;
 

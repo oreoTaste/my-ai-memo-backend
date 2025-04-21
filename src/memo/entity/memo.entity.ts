@@ -10,28 +10,28 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryColumn,
 @Index("Y_MEMO_IDX2", ['insertId', 'title'], {unique: false})
 @Index("Y_MEMO_IDX3", ['createdAt'], {unique: false})
 export class Memo extends CommonEntity{
-    @PrimaryGeneratedColumn({type: 'number', primaryKeyConstraintName: "Y_MEMO_PK", name: "SEQ"})
+    @PrimaryGeneratedColumn({type: 'number', primaryKeyConstraintName: "Y_MEMO_PK", name: "SEQ", comment: "메모ID"})
     @IsNumber()
     @ApiProperty()
     seq: number;
 
-    @Column({nullable: false, type: "varchar2", length: 4000, name: "RAWS"})
+    @Column({nullable: false, type: "varchar2", length: 4000, name: "RAWS", comment: "메모 원 내용"})
     @ApiProperty()
     raws: string;
 
-    @Column({nullable: true, type: "varchar2", length: 1000, name: "SUBJECT"})
+    @Column({nullable: true, type: "varchar2", length: 1000, name: "SUBJECT", comment: "메모 주제"})
     @ApiProperty()
     subject: string;
 
-    @Column({nullable: false, type: "varchar2", length: 1000, name: "TITLE"})
+    @Column({nullable: false, type: "varchar2", length: 1000, name: "TITLE", comment: "메모 제목"})
     @ApiProperty()
     title: string;
 
-    @Column({nullable: true, type: "varchar2", length: 4000, name: "ANSWER"})
+    @Column({nullable: true, type: "varchar2", length: 4000, name: "ANSWER", comment: "메모 조언"})
     @ApiProperty()
     answer: string;
 
-    @Column({nullable: false, type: "varchar2", length: 1, default: "Y", name: "DISPLAY_YN"})
+    @Column({nullable: false, type: "varchar2", length: 1, default: "Y", name: "DISPLAY_YN", comment: "메모 노출여부"})
     @ApiProperty()
     displayYn: string;
 

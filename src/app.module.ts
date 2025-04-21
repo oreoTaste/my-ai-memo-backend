@@ -30,6 +30,9 @@ import { QueryModule } from './query/query.modue';
 import { QueryController } from './query/query.controller';
 import { BatchModule } from './batch/batch.module';
 import { RecordController } from './record/record.controller';
+import { ChatModule } from './chat/chat.module';
+import { Chat, ChatMember, ChatMessage, ChatSeqTracker } from './chat/entity/chat.entity';
+import { ChatController } from './chat/chat.controller';
 
 @Module({
   imports: [
@@ -51,8 +54,8 @@ import { RecordController } from './record/record.controller';
     username: process.env.DB_USERNAME,
     password: process.env.DB_PASSWORD,
     database: 'xe',
-    entities: [User, Memo, Record, CodeGroup, Code, Todo, UploadFile, SharedMemo],
-    synchronize: true,
+    entities: [User, Memo, Record, CodeGroup, Code, Todo, UploadFile, SharedMemo, ChatMember, Chat, ChatMessage, ChatSeqTracker],
+    synchronize: false,
     logging:'all',
     dropSchema: false
     })
@@ -66,6 +69,7 @@ import { RecordController } from './record/record.controller';
   , FileModule
   , QueryModule
   , BatchModule
+  , ChatModule
   ],
   controllers: [AppController],
   providers: [AppService],
@@ -75,6 +79,6 @@ export class AppModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(LoggerMiddleware/* , IpCheckMiddleware */)
-      .forRoutes(AppController, UserController, MemoController, CodeController, TodoController, FileController, QueryController, RecordController);
+      .forRoutes(AppController, UserController, MemoController, CodeController, TodoController, FileController, QueryController, RecordController, ChatController);
   }  
 }
